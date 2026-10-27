@@ -5,8 +5,8 @@ description: Render a Markdown report as a print-ready PDF review sheet in the s
 
 # apollo-sheets
 
-`sheet.py` turns Markdown into a PDF through headless Chrome. The full syntax is in `README.md` next to this
-file; `examples/kitchen-sink/kitchen-sink.md` uses every block.
+`sheet.py` turns Markdown into a PDF through headless Chrome. Start from `template.md`. The reference sheet
+`examples/apollo/apollo.md` shows every block beside its source; `README.md` summarizes the syntax.
 
 ## Workflow
 
@@ -14,7 +14,9 @@ file; `examples/kitchen-sink/kitchen-sink.md` uses every block.
    Quote any value that contains a colon.
 2. Use the blocks where they carry information: `:::diagram` for a signal or data path, `:::timeline` for a
    sequence, `:::plot` for CSV data, `:::table` for anything tabular, `:::checklist` for a procedure,
-   `:::caution` / `:::warning` for hazards.
+   `:::caution` / `:::warning` for hazards, `:::sequence` for hand-offs or protocols, `:::signals` for timing,
+   `:::budget` for used-against-capacity, `:::equations` and `:::symbols` for derivations. A block that holds
+   blocks takes four colons (`::::changed` around `:::equations`).
 3. Render with page PNGs and look at every page:
 
        python <skill dir>/sheet.py report.md --png

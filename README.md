@@ -9,8 +9,11 @@ including line-art block diagrams, timelines and plots drawn from text.
 
 | | | |
 |---|---|---|
-| ![kitchen sink, page 3](examples/kitchen-sink/kitchen-sink-3.png) | ![rc filter](examples/rc-filter/rc-filter-1.png) | ![lander](examples/lander/lander-1.png) |
-| [kitchen-sink](examples/kitchen-sink/kitchen-sink.md): every block | [rc-filter](examples/rc-filter/rc-filter.md): diagram, math, log plot | [lander](examples/lander/lander.md): timeline, checklists, cream paper |
+| ![reference, page 6](examples/apollo/apollo-6.png) | ![rc filter](examples/rc-filter/rc-filter-1.png) | ![lander](examples/lander/lander-1.png) |
+| [apollo](examples/apollo/apollo.md): the reference sheet, every block beside its source | [rc-filter](examples/rc-filter/rc-filter.md): diagram, math, log plot | [lander](examples/lander/lander.md): timeline, checklists, cream paper |
+
+Start a new sheet from [template.md](template.md). [kitchen-sink](examples/kitchen-sink/kitchen-sink.md) and
+[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens.
 
 ## Requirements
 
@@ -63,7 +66,10 @@ Quote values that contain a colon.
 | `### Heading` | `2.1.1.1  Heading.` underlined |
 | `# Heading` | a part heading, on a new page |
 | `![Caption](fig.svg){width=half}` | a numbered figure; `width=third` too; `gray=1` prints a dark screen capture in black ink |
-| `$inline$`, `$$display$$`, `\boxed{}` | TeX through matplotlib mathtext |
+| `$inline$`, `$$display$$`, `\boxed{}` | TeX through matplotlib mathtext; displays are numbered |
+| `:::equations` | aligned equations, one a line; a line starting with a relation continues the one above |
+| `:::symbols` | the "where" list under an equation: `SYMBOL \| MEANING \| UNIT` |
+| `<!-- ... -->` | a comment that never prints |
 | `:::table Caption` | wraps a pipe table: numbered and titled |
 | `:::note` / `:::caution` / `:::warning` | the three call-outs |
 | `:::checklist TITLE \| ROLE` | a boxed procedure in typewriter |
@@ -71,7 +77,16 @@ Quote values that contain a colon.
 | `::::row` ... `\|\|\|` ... `::::` | side-by-side columns |
 | `:::diagram Caption` | block diagram |
 | `:::timeline Caption` | bars on one time axis |
-| `:::plot Caption` | lines from a CSV |
+| `:::plot Caption` | lines from a CSV, or exact curves from `fn` |
+| `:::sequence Caption` | messages between actors |
+| `:::signals Caption` | a timing diagram |
+| `:::budget Caption` | used against capacity, one gauge a line |
+
+A block that holds blocks takes four colons: `::::changed` around an `:::equations`, like `::::row`.
+
+The full syntax of every figure block, with each one drawn beside its source, is the reference sheet
+[examples/apollo/apollo.md](examples/apollo/apollo.md) ([PDF](examples/apollo/apollo.pdf)). The summaries below
+cover the first three.
 
 Inline: `**bold**`, `*italic*`, `_underline_`, `` `code` ``, `H~2~O`, `10^6^`, ` -- ` for an en dash. Links
 keep their words and drop the URL.
@@ -103,10 +118,15 @@ call ROW AT "TEXT"                        # leader from a bar to lettering below
 ```
 csv data.csv                              # relative to the sheet
 x COLUMN ["LABEL"]
-y COLUMN ["LABEL"]                        # one per line, labelled at its right end
-ylabel "LABEL"
+y COLUMN ["LABEL"] [dots] [every=N]       # one per line, labelled at its right end
+range LO HI                               # x range for fn curves
+fn "EXPR" ["LABEL"]                       # a numpy expression in x, drawn exactly
+xlabel / ylabel "LABEL"
 log x|y|xy
+xlim / ylim LO HI
+size wide | size W H
 mark AT "LABEL"
+hline AT "LABEL"
 ```
 
 ### your own figures

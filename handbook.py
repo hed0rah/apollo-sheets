@@ -4,7 +4,10 @@ dashed fences round subsystems, drums for storage, filled arrowheads. Everything
 
   diagram(spec)    functional block diagram from text lines (see sheet.py's docstring for the syntax)
   timeline(spec)   rows of bars on one time axis, with vertical markers
-  plot(spec, base) lines from a CSV, labelled at their ends instead of a legend
+  plot(spec, base) CSV series and exact functions, labelled at their ends instead of a legend
+  budget(spec)     used-of-capacity gauges (memory, power, link budgets)
+  sequence(spec)   messages between actors, top to bottom (protocols, install flows)
+  signals(spec)    a timing diagram: clocks, lines and buses on one step axis
   svg(fig)         any matplotlib figure, styled with STYLE, as SVG text
 """
 import csv
@@ -16,6 +19,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.patches import Ellipse, FancyBboxPatch, Rectangle
 
 INK = "#111111"
@@ -208,19 +212,34 @@ def timeline(spec):
         return svg(fig)
 
 
-# -- plot from a CSV -------------------------------------------------------------------------------------------------
+# -- plot: CSV columns and exact functions ---------------------------------------------------------------------------
+
+# what a fn expression may name: x, and these
+FN = {k: getattr(np, k) for k in ("sin", "cos", "tan", "arctan", "exp", "log", "log10", "log2", "sqrt", "abs",
+                                  "sinh", "cosh", "tanh", "where", "minimum", "maximum", "clip", "floor", "ceil",
+                                  "sign", "pi", "e", "hypot", "arctan2", "sinc")}
+
 
 def plot(spec, base=Path(".")):
-    """csv PATH                 (relative to the sheet)
+    """csv PATH                         (relative to the sheet)
        x COLUMN ["LABEL"]
-       y COLUMN ["LABEL"]       (one per line; each line labelled at its right end)
-       ylabel "LABEL"
+       y COLUMN ["LABEL"] [dots|step] [every=N]   (a series; dots for measured points, step for a staircase;
+                                        every=N keeps every Nth row, so dense dots stay dots)
+       fn "EXPR" ["LABEL"] [dots|step]  (an exact curve y(x) in numpy terms: sin exp sqrt log10 pi where ...)
+       range LO HI [N]                  (x for fn curves; default the csv's x, else 0..1; N points, default 400)
+       xlabel "LABEL" / ylabel "LABEL"
+       xlim LO HI / ylim LO HI
        log x|y|xy
-       mark AT "LABEL"          (a vertical line at x = AT)"""
-    cols, ys, marks = {}, [], []
-    xcol, xlabel, ylabel, log = None, "", "", ""
+       mark AT "LABEL"                  (vertical line at x = AT)
+       hline AT "LABEL"                 (horizontal line at y = AT: a limit, a threshold)
+       size wide | size W H             (inches; default 3.4 x 2.2, wide 6.4 x 2.4)
+     every series is labelled at its right end, so there is no legend to look up"""
+    cols, series, marks, hlines = {}, [], [], []
+    xcol, xlabel, ylabel, log, rng, xlim, ylim, size = None, "", "", "", None, None, None, (3.4, 2.2)
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
+        flags = [o for o in rest[1:] if o in ("dots", "step") or o.startswith("every=")]
+        words = [o for o in rest[1:] if o not in flags]
         if kind == "csv":
             with open(base / rest[0], newline="") as fh:
                 for row in csv.DictReader(fh):
@@ -228,27 +247,225 @@ def plot(spec, base=Path(".")):
                         cols.setdefault(k, []).append(float(v))
         elif kind == "x":
             xcol, xlabel = rest[0], caps(rest[1] if len(rest) > 1 else rest[0])
-        elif kind == "y":
-            ys.append((rest[0], caps(rest[1] if len(rest) > 1 else rest[0])))
+        elif kind in ("y", "fn"):
+            series.append((kind, rest[0], caps(words[0]) if words else ("" if kind == "fn" else caps(rest[0])), flags))
+        elif kind == "range":
+            rng = (float(rest[0]), float(rest[1]), int(rest[2]) if len(rest) > 2 else 400)
+        elif kind == "xlabel":
+            xlabel = caps(rest[0])
         elif kind == "ylabel":
             ylabel = caps(rest[0])
+        elif kind in ("xlim", "ylim"):
+            lim = (float(rest[0]), float(rest[1]))
+            xlim, ylim = (lim, ylim) if kind == "xlim" else (xlim, lim)
         elif kind == "log":
             log = rest[0]
         elif kind == "mark":
             marks.append((float(rest[0]), caps(rest[1])))
+        elif kind == "hline":
+            hlines.append((float(rest[0]), caps(rest[1]) if len(rest) > 1 else ""))
+        elif kind == "size":
+            size = (6.4, 2.4) if rest[0] == "wide" else (float(rest[0]), float(rest[1]))
+    if rng:
+        lo, hi, n = rng
+        xs = np.geomspace(lo, hi, n) if "x" in log else np.linspace(lo, hi, n)
+    else:
+        xs = np.asarray(cols[xcol]) if xcol else np.linspace(0, 1, 400)
     with plt.rc_context(STYLE):
-        fig, ax = plt.subplots(figsize=(3.4, 2.2))
-        for i, (col, label) in enumerate(ys):
-            ax.plot(cols[xcol], cols[col], color=INK, ls=DASHES[i % len(DASHES)])
-            ax.annotate(label, xy=(cols[xcol][-1], cols[col][-1]), xytext=(4, 0), textcoords="offset points",
-                        fontsize=5.6, va="center")
+        fig, ax = plt.subplots(figsize=size)
+        for i, (kind, src, label, flags) in enumerate(series):
+            if kind == "y":
+                k = next((int(f[6:]) for f in flags if f.startswith("every=")), 1)
+                x, y = np.asarray(cols[xcol])[::k], np.asarray(cols[src])[::k]
+            else:
+                x = xs
+                y = np.broadcast_to(eval(src, {"__builtins__": {}}, {**FN, "x": xs}), xs.shape)
+            if "dots" in flags:
+                ax.plot(x, y, ls="none", marker="o", ms=2.6, mfc="white", mec=INK, mew=0.7)
+            else:
+                ax.plot(x, y, color=INK, ls=DASHES[i % len(DASHES)], drawstyle="steps-post" if "step" in flags else "default")
+            if label:
+                ax.annotate(label, xy=(x[-1], y[-1]), xytext=(4, 0), textcoords="offset points", fontsize=5.6,
+                            va="center", annotation_clip=False)
         for at, label in marks:
             ax.axvline(at, color=INK, lw=0.6, ls=(0, (3, 2)))
             ax.text(at, 1.0, label, fontsize=5.4, ha="center", va="bottom", transform=ax.get_xaxis_transform())
+        for at, label in hlines:
+            ax.axhline(at, color=INK, lw=0.6, ls=(0, (3, 2)))
+            ax.text(0.99, at, label, fontsize=5.4, ha="right", va="bottom", transform=ax.get_yaxis_transform())
         if "x" in log:
             ax.set_xscale("log")
         if "y" in log:
             ax.set_yscale("log")
+        if xlim:
+            ax.set_xlim(*xlim)
+        if ylim:
+            ax.set_ylim(*ylim)
         ax.grid(True, color=INK, lw=0.25, alpha=0.35)
         ax.set_xlabel(xlabel, fontsize=6); ax.set_ylabel(ylabel, fontsize=6)
+        return svg(fig)
+
+
+# -- budget gauges ---------------------------------------------------------------------------------------------------
+
+def _num(v):
+    """69540 -> 69 540, the handbook's grouping"""
+    return f"{v:,.0f}".replace(",", " ") if float(v).is_integer() else f"{v:,g}".replace(",", " ")
+
+
+def budget(spec):
+    """bar "LABEL" USED CAPACITY ["UNIT"]  (one gauge a line: the used part hatched, headroom open, figures at the end;
+                                          numbers may be hex, 0x8DFBC)
+       mark PERCENT "LABEL"               (a dashed limit across every gauge, e.g. 90 "RED AT 90 %")"""
+    bars, marks = [], []
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "bar":
+            bars.append((caps(rest[0]), float(int(rest[1], 0)) if rest[1].startswith("0x") else float(rest[1]),
+                         float(int(rest[2], 0)) if rest[2].startswith("0x") else float(rest[2]),
+                         rest[3] if len(rest) > 3 else ""))
+        elif kind == "mark":
+            marks.append((float(rest[0]), caps(rest[1])))
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=(6.4, 0.3 + 0.3 * len(bars) + (0.15 if marks else 0)))
+        for i, (label, used, cap, unit) in enumerate(bars):
+            y = -i
+            ax.add_patch(Rectangle((0, y - 0.3), 1, 0.6, fc="white", ec=INK, lw=0.8))
+            ax.add_patch(Rectangle((0, y - 0.3), min(used / cap, 1), 0.6, fc="white", ec=INK, lw=0.6, hatch="//////"))
+            ax.text(-0.02, y, label, ha="right", va="center", fontsize=6)
+            ax.text(1.02, y, f"{_num(used)} OF {_num(cap)} {unit.upper()}".rstrip() + f",  {100 * used / cap:.1f} %",
+                    ha="left", va="center", fontsize=5.8)
+        for pct, label in marks:
+            ax.plot([pct / 100] * 2, [-len(bars) + 0.6, 0.45], color=INK, lw=0.7, ls=(0, (3, 2)))
+            ax.text(pct / 100, 0.5, label, ha="center", va="bottom", fontsize=5.4)
+        ax.set_xlim(-0.42, 1.55); ax.set_ylim(-len(bars) + 0.5, 0.5 + (0.45 if marks else 0.05))
+        ax.set_axis_off()
+        return svg(fig)
+
+
+# -- sequence chart --------------------------------------------------------------------------------------------------
+
+def sequence(spec):
+    """actor ID "LABEL"                  (columns, left to right in the order given)
+       msg FROM TO "LABEL" [dash]        (one step each, top to bottom; FROM == TO is a call to itself; dash for replies)
+       note ID "TEXT"                    (boxed lettering on that lifeline, one step)
+       gap ["TEXT"]                      (time passes: the lifelines break for a step)"""
+    actors, steps = {}, []
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "actor":
+            actors[rest[0]] = (len(actors), caps(rest[1]))
+        elif kind == "msg":
+            steps.append(("msg", rest[0], rest[1], caps(rest[2]) if len(rest) > 2 else "", "dash" in rest[3:]))
+        elif kind == "note":
+            steps.append(("note", rest[0], None, caps(rest[1]), False))
+        elif kind == "gap":
+            steps.append(("gap", None, None, caps(rest[0]) if rest else "", False))
+    dx, dy = 1.6, 0.3
+    n = len(steps)
+    X = {k: i * dx for k, (i, _) in actors.items()}
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=((len(actors) - 1) * dx + 1.6, (n + 1.6) * dy))
+        ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
+        ax.set_xlim(-0.8, (len(actors) - 1) * dx + 0.8); ax.set_ylim(-(n + 0.8) * dy, 0.8 * dy)
+        gaps = [k for k, s in enumerate(steps) if s[0] == "gap"]
+        for k, (i, label) in actors.items():
+            x = X[k]
+            ax.add_patch(Rectangle((x - 0.55, 0.05), 1.1, 0.42 * 0.8, fc="white", ec=INK, lw=0.9))
+            ax.text(x, 0.05 + 0.168, label, ha="center", va="center", fontsize=6, linespacing=1.05)
+            y = 0.05
+            for g in gaps + [n]:
+                yb = -(g + 0.25) * dy if g < n else -(n + 0.4) * dy
+                ax.plot([x, x], [y, yb], color=INK, lw=0.6)
+                y = -(g + 0.75) * dy
+        for k, (kind, a, b, label, dash) in enumerate(steps):
+            y = -(k + 0.5) * dy
+            if kind == "gap":
+                for x in X.values():
+                    ax.plot([x - 0.08, x + 0.08], [y + 0.06, y + 0.1], color=INK, lw=0.6)
+                    ax.plot([x - 0.08, x + 0.08], [y - 0.1, y - 0.06], color=INK, lw=0.6)
+                if label:
+                    ax.text(X[next(iter(actors))] + 0.15, y, label, fontsize=5.2, va="center", style="italic")
+            elif kind == "note":
+                ax.text(X[a], y, label, ha="center", va="center", fontsize=5.2, linespacing=1.05,
+                        bbox=dict(fc="white", ec=INK, lw=0.6, boxstyle="square,pad=0.35"))
+            elif a == b:
+                x = X[a]
+                ax.plot([x, x + 0.3, x + 0.3], [y + 0.08, y + 0.08, y - 0.08], color=INK, lw=0.7,
+                        ls=(0, (4, 2.5)) if dash else "-")
+                ax.annotate("", xy=(x, y - 0.08), xytext=(x + 0.3, y - 0.08),
+                            arrowprops=dict(arrowstyle="-|>", color=INK, lw=0.7, mutation_scale=6, shrinkA=0, shrinkB=0))
+                ax.text(x + 0.36, y, label, fontsize=5.2, va="center")
+            else:
+                ax.annotate("", xy=(X[b], y - 0.06), xytext=(X[a], y - 0.06),
+                            arrowprops=dict(arrowstyle="-|>", color=INK, lw=0.7, ls=(0, (4, 2.5)) if dash else "-",
+                                            mutation_scale=7, shrinkA=0, shrinkB=0))
+                ax.text((X[a] + X[b]) / 2, y - 0.03, label, ha="center", va="bottom", fontsize=5.2)
+        return svg(fig)
+
+
+# -- timing diagram --------------------------------------------------------------------------------------------------
+
+def signals(spec):
+    """signal "NAME" WAVE ["D0,D1,..."]   (one row a line; WAVE has one character a clock step:
+                                         0 1 low, high   p n a clock period, high or low first   . hold   z released (mid level)
+                                         x unknown (hatched)   = a bus value, lettered from the list in order)
+       mark STEP "LABEL" [dash]          (a vertical line at that step, labelled above)"""
+    rows, marks = [], []
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "signal":
+            rows.append((caps(rest[0]), rest[1], rest[2].split(",") if len(rest) > 2 else []))
+        elif kind == "mark":
+            marks.append((float(rest[0]), caps(rest[1]), "dash" in rest[2:]))
+    steps = max(len(w) for _, w, _ in rows)
+    half = {"0": "00", "1": "11", "p": "10", "n": "01", "z": "zz", "x": "xx", "=": "=.", ".": ".."}
+    h, s = 0.5, 0.06                                       # level height and edge slant, in steps
+    level = {"0": 0.0, "1": h, "z": h / 2}
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=(6.4, 0.3 + 0.36 * len(rows) + (0.15 if marks else 0)))
+        for r, (name, wave, data) in enumerate(rows):
+            base = -r * 0.9
+            runs = []                                      # [state, start, end, label]
+            last = "x"
+            for k, ch in enumerate("".join(half[c] for c in wave)):
+                t = k / 2
+                if ch == "." or (ch == last and ch != "=" and runs):
+                    runs[-1][2] = t + 0.5
+                    continue
+                last = ch
+                runs.append([ch, t, t + 0.5, data.pop(0).upper() if ch == "=" and data else ""])
+            for j, (st, a, b, label) in enumerate(runs):
+                first, final = j == 0, j == len(runs) - 1
+                if st in level:
+                    y = base + level[st]
+                    ax.plot([a if first else a + s, b if final else b - s], [y, y], color=INK, lw=0.8,
+                            ls=(0, (2, 1.5)) if st == "z" else "-")
+                else:
+                    lo, mid, hi = base, base + h / 2, base + h
+                    left = [(a, lo), (a, hi)] if first else [(a, mid), (a + s, hi)]
+                    right = [(b, hi), (b, lo)] if final else [(b - s, hi), (b, mid), (b - s, lo)]
+                    pts = left + right + ([(a + s, lo)] if not first else [])
+                    ax.add_patch(plt.Polygon(pts, closed=True, fc="white", ec=INK, lw=0.8,
+                                             hatch="//////" if st == "x" else None))
+                    if label:
+                        ax.text((a + b) / 2, mid, label, ha="center", va="center", fontsize=5.4)
+                if not final:
+                    nx = runs[j + 1][0]
+                    if st in level and nx in level:
+                        ax.plot([b - s, b + s], [base + level[st], base + level[nx]], color=INK, lw=0.8)
+                    elif st in level:
+                        ax.plot([b - s, b], [base + level[st], base + h / 2], color=INK, lw=0.8)
+                    elif nx in level:
+                        ax.plot([b, b + s], [base + h / 2, base + level[nx]], color=INK, lw=0.8)
+            ax.text(-0.3, base + h / 2, name, ha="right", va="center", fontsize=6)
+        top, prev, lift = 0.75, None, 0.0
+        for at, label, dash in sorted(marks):
+            lift = 0.3 - lift if prev is not None and at - prev < 2 else 0.0      # stagger marks that crowd
+            prev = at
+            ax.plot([at, at], [-(len(rows) - 1) * 0.9 - 0.15, top + lift], color=INK, lw=0.6,
+                    ls=(0, (3, 2)) if dash else "-")
+            ax.text(at, top + lift + 0.05, label, ha="center", va="bottom", fontsize=5.4)
+        ax.set_xlim(-2.2, steps + 0.2); ax.set_ylim(-(len(rows) - 1) * 0.9 - 0.25, top + (0.65 if marks else 0))
+        ax.set_axis_off()
         return svg(fig)

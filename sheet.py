@@ -30,10 +30,20 @@ the ::: blocks below add the handbook furniture.
   :::changed                           change bar in the gutter beside whatever is inside
   :::diagram Caption                   block diagram (handbook.diagram syntax), drawn as line art
   :::timeline Caption                  bars on one time axis (handbook.timeline)
-  :::plot Caption                      lines from a CSV (handbook.plot)
+  :::plot Caption                      CSV series and exact fn curves, thresholds, limits (handbook.plot)
+  :::budget Caption                    used-of-capacity gauges (handbook.budget)
+  :::sequence Caption                  messages between actors (handbook.sequence)
+  :::signals Caption                   timing diagram: clocks, lines, buses (handbook.signals)
+  $x$  and  $$ ... $$                  inline math; a display, numbered (2.1-1) at the right
+  :::equations                         one equation a line, aligned on its relation; a line that starts with
+                                       a relation continues the one above, unnumbered
+  :::symbols                           the "where" list: SYMBOL | MEANING | UNIT a line, symbol in TeX
+  <!-- ... -->                         a comment, never printed
   # Heading                            a part heading, on a new page
   ::::row                              side by side; columns split on a line "|||", closed by "::::"
   :::                                  closes a block
+
+  template.md is a sheet to copy; examples/apollo/apollo.md shows every block beside its source.
 
   python sheet.py report.md                      writes report.pdf beside it
   python sheet.py report.md -o out.pdf --png     and page PNGs, for a look without a printer
@@ -65,6 +75,7 @@ CHROME = os.environ.get("SHEET_CHROME", "google-chrome")
 # -- math and inline ---------------------------------------------------------------------------------------------------
 
 _MATH = {}
+RELATION = re.compile(r"=|<|>|\\(approx|equiv|sim|propto|leq?|geq?)(?![a-zA-Z])")
 
 
 def math(tex, display=False):
@@ -93,13 +104,14 @@ def math(tex, display=False):
 def inline(s):
     held = []
 
-    def hold(m):
-        held.append(math(m.group(1)))
+    def hold(frag):
+        held.append(frag)
         return f"\x00{len(held) - 1}\x00"
 
-    s = re.sub(r"(?<![\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?![\w$])", hold, s)
+    # code first, so a $ inside backticks stays a dollar sign
+    s = re.sub(r"`([^`]+)`", lambda m: hold(f"<code>{html.escape(m.group(1), quote=False)}</code>"), s)
+    s = re.sub(r"(?<![\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?![\w$])", lambda m: hold(math(m.group(1))), s)
     s = html.escape(s, quote=False)
-    s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
     s = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
     s = re.sub(r"(?<![\w*])\*([^*]+)\*(?![\w*])", r"<i>\1</i>", s)
     s = re.sub(r"(?<!\w)_([^_]+)_(?!\w)", r"<u>\1</u>", s)
@@ -107,6 +119,8 @@ def inline(s):
     s = re.sub(r"\^([^^\s]+)\^", r"<sup>\1</sup>", s)
     s = re.sub(r"~([^~\s]+)~", r"<sub>\1</sub>", s)
     s = s.replace(" -- ", " &ndash; ")
+    # a number keeps its % or unit, and 69 540 its groups, on one line
+    s = re.sub(r"(?<=\d) (?=\d{3}\b|%|[kMG]?(B|Hz|s|ms|us|V|mV|A|mA|W|dB|m|mm|in|pt)\b)", "&nbsp;", s)
     return re.sub(r"\x00(\d+)\x00", lambda m: held[int(m.group(1))], s)
 
 
@@ -118,7 +132,7 @@ class Sheet:
         self.base = base
         self.sec = str(meta.get("section", "1"))
         self.count = [0, 0, 0]                  # ##, ###, ####
-        self.fig = self.tab = 0
+        self.fig = self.tab = self.eq = 0
         self.dwg = 500
 
     def number(self, level):
@@ -136,6 +150,34 @@ class Sheet:
         cap = f"Figure {self.sec}-{self.fig}.&ensp;{inline(caption)}" if caption else f"Figure {self.sec}-{self.fig}."
         return (f'<figure class="{width}"><div class="art">{body}<span class="dwg">{self.drawing()}</span></div>'
                 f"<figcaption>{cap}</figcaption></figure>")
+
+    def eqno(self):
+        self.eq += 1
+        return f'<span class="eqno">({self.sec}-{self.eq})</span>'
+
+    def equations(self, body):
+        """one equation per line, aligned on its first top-level relation (or on & where the line has one)"""
+        rows = []
+        for line in (l.strip() for l in body if l.strip()):
+            if "&" in line:
+                lhs, rhs = line.split("&", 1)
+            else:
+                cut = next((m.start() for m in RELATION.finditer(line)
+                            if line[:m.start()].count("{") == line[:m.start()].count("}")), None)
+                lhs, rhs = (line[:cut], line[cut:]) if cut else ("", line)
+            rows.append(f'<span class="lhs">{math(lhs, True) if lhs.strip() else ""}</span>'
+                        f'<span class="rhs">{math(rhs, True)}</span>'
+                        + (self.eqno() if lhs.strip() else "<span></span>"))    # a continuation takes no number
+        return '<div class="equations">' + "".join(rows) + "</div>"
+
+    def symbols(self, body):
+        """SYMBOL | MEANING | UNIT, one per line, set as the handbook's "where" list"""
+        rows = []
+        for line in (l for l in body if l.strip()):
+            sym, mean, unit = ([c.strip() for c in line.split("|")] + ["", ""])[:3]
+            rows.append(f"<tr><td>{math(sym)}</td><td>=</td><td>{inline(mean)}</td>"
+                        f"<td>{inline(unit)}</td></tr>")
+        return f'<div class="where"><span>where</span><table>{"".join(rows)}</table></div>'
 
     # blocks: returns html for a list of lines
     def blocks(self, lines):
@@ -166,8 +208,14 @@ class Sheet:
                 while "$$" not in tex and j + 1 < len(lines):
                     j += 1
                     tex += " " + lines[j].strip()
-                out.append(f'<div class="display">{math(tex.split("$$")[0], display=True)}</div>')
+                out.append(f'<div class="display">{math(tex.split("$$")[0], display=True)}{self.eqno()}</div>')
                 i = j + 1
+                continue
+            if s.startswith("<!--"):                       # guidance in a template, never printed
+                flush()
+                while "-->" not in lines[i]:
+                    i += 1
+                i += 1
                 continue
             if s.startswith("```"):
                 flush()
@@ -274,10 +322,15 @@ class Sheet:
                     cur.append(l)
             cols.append(cur)
             return '<div class="row">' + "".join(f"<div>{self.blocks(c)}</div>" for c in cols) + "</div>"
-        if kind in ("diagram", "timeline"):
+        if kind == "equations":
+            return self.equations(body)
+        if kind == "symbols":
+            return self.symbols(body)
+        if kind in ("diagram", "timeline", "sequence", "signals", "budget"):
             return self.figure(getattr(handbook, kind)(text), arg, "wide")
         if kind == "plot":
-            return self.figure(handbook.plot(text, self.base), arg)
+            wide = re.search(r"^\s*size\s+wide\b", text, re.M)
+            return self.figure(handbook.plot(text, self.base), arg, "wide" if wide else "")
         raise SystemExit(f"sheet: unknown block :::{kind}")
 
 
