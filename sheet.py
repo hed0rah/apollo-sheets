@@ -371,7 +371,8 @@ def render(src_path, overrides=()):
     head = f'<div class="title">{inline(str(meta.get("title", "")).upper())}</div>'
     if meta.get("by"):
         head += f'<div class="by">{inline(str(meta["by"]))}</div>'
-    return (f'<!doctype html><html><head><meta charset="utf-8"><title>{html.escape(str(meta.get("title", "")))}</title><style>{css(sheet.m)}</style></head><body>'
+    title = html.escape(str(meta.get("doc") or meta.get("title", "")))       # the PDF's title, not sheet.html
+    return (f'<!doctype html><html><head><meta charset="utf-8"><title>{title}</title><style>{css(sheet.m)}</style></head><body>'
             f'<div class="edgetab">{tab}</div>{head}<main>{content}</main></body></html>')
 
 

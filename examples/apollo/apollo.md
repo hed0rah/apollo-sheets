@@ -401,35 +401,29 @@ side by side, columns split on a line `|||`, closed by `::::`; anything can go i
 
 ::::row
 ```
-![A Screen Capture](../kitchen-sink/screen.png){width=half gray=1}
+![A Screen Capture](../kitchen-sink/screen.png){width=third gray=1}
 ```
 |||
-![A Dark Screen Capture, Printed as Ink](../kitchen-sink/screen.png){width=half gray=1}
+![A Dark Screen Capture, Printed as Ink](../kitchen-sink/screen.png){width=third gray=1}
 ::::
 
 ## Making a sheet
 
 :::checklist Turn a Report into a Sheet | Writer
 1  python sheet.py report.md --png
-     -s section=N -s tab=XXX -s doc=XXX-N
-     -s mission=... -s date=MM.DD.YYYY
+     -s section=N -s tab=XXX -s date=MM.DD.YYYY
 2  read every page PNG; fix what crowds
-3  add the figures: diagram, plot, budget,
-     sequence, signals, timeline
-4  equations: numbered, where-lists
-5  cautions and checklists from the text
-6  byline: DRAFT until checked
-7  send the draft to the fact checker
-8  apply corrections; name the checker
-9  commit; send the PDF
+3  add figures, equations, cautions, checklists
+4  byline DRAFT; send to the fact checker
+5  apply corrections; name the checker
+6  commit; send the PDF
 :::
 
 For a sheet of your own, copy `template.md`: it has the front matter and one of each block, with comments
 that do not print. Later changes go in `:::changed` with `change:` set in the front matter; the basic date stays.
 
 :::caution
-Chrome does not print into the page margins: the gutter numbers, edge tab and change bars are drawn inside the
-content box, so keep `main`'s padding when restyling. The faces come from Ubuntu's fonts-urw-base35 package
-(`/usr/share/fonts/opentype/urw-base35`). A block closes at the first line of exactly its own colons, so a block that holds blocks takes four:
-`::::changed` around an `:::equations`, like `::::row`. A row's own source cannot be shown inside a row.
+Chrome does not print into the page margins, so the gutter numbers, edge tab and change bars sit inside the
+content box: keep `main`'s padding when restyling. A block closes at the first line of exactly its own colons, so a
+block that holds blocks takes four (`::::changed` around `:::equations`), and a row's source cannot be shown in a row.
 :::
