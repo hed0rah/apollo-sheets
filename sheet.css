@@ -1,0 +1,91 @@
+/* APOLLO style review sheet, after the Apollo Operations Handbook. {NAME} fields are filled by sheet.py */
+@font-face { font-family: "Roman"; src: url("file://{FONTS}/NimbusRoman-Regular.otf"); }
+@font-face { font-family: "Roman"; font-style: italic; src: url("file://{FONTS}/NimbusRoman-Italic.otf"); }
+@font-face { font-family: "Roman"; font-weight: bold; src: url("file://{FONTS}/NimbusRoman-Bold.otf"); }
+@font-face { font-family: "Letter"; src: url("file://{FONTS}/NimbusSansNarrow-Regular.otf"); }
+@font-face { font-family: "Letter"; font-weight: bold; src: url("file://{FONTS}/NimbusSansNarrow-Bold.otf"); }
+@font-face { font-family: "Type"; src: url("file://{FONTS}/NimbusMonoPS-Regular.otf"); }
+@font-face { font-family: "Type"; font-weight: bold; src: url("file://{FONTS}/NimbusMonoPS-Bold.otf"); }
+
+:root { --ink: #111; --paper: {PAPER}; --gutter: 0.95in; }
+
+@page {
+  size: letter;
+  margin: 0.95in 0.3in 0.85in 0.45in;
+  background: var(--paper);
+  @top-left { content: {DOC}; font: 7.5pt "Letter"; padding-left: 0.45in; color: #111; vertical-align: bottom; padding-bottom: 0.22in; }
+  @top-center { content: {HANDBOOK} "\A" {SYSTEM}; white-space: pre; text-align: center; font: 8pt/1.35 "Roman";
+                letter-spacing: 0.06em; color: #111; vertical-align: bottom; padding-bottom: 0.18in; }
+  @bottom-left { content: {FOOTER}; font: 7.5pt "Roman"; color: #111; vertical-align: top; padding-top: 0.2in;
+                 white-space: pre; padding-left: 0.45in; }
+  @bottom-right { content: "Page " {SEC} "-" counter(page); font: 7.5pt "Roman"; color: #111; vertical-align: top;
+                  padding-top: 0.2in; padding-right: 0.5in; }
+}
+
+html { background: var(--paper); }
+body { margin: 0; color: var(--ink); font: 9.6pt/1.32 "Roman", "Nimbus Roman", serif;
+       -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+main { padding-left: var(--gutter); padding-right: 0.5in; }
+.title, .by { padding-left: 0.45in; padding-right: 0.5in; }
+
+/* black edge tab, repeated on every page */
+.edgetab { position: fixed; right: 0; top: 2.1in; width: 0.42in; padding: 0.16in 0; background: var(--ink);
+           color: var(--paper); font: bold 8pt "Letter"; text-align: center; letter-spacing: 0.04em; }
+
+.title { text-align: center; font: bold 12pt "Roman"; letter-spacing: 0.08em; margin: 0 0 0.04in; }
+.by { text-align: center; font: italic 8.5pt "Roman"; margin-bottom: 0.14in; }
+
+h1 { font: bold 10.5pt "Roman"; letter-spacing: 0.06em; text-align: center; margin: 0 0 0.1in; break-before: page; }
+h2, h3, h4 { position: relative; margin: 0.16in 0 0.05in; break-after: avoid; }
+h2 { font: 9.6pt "Roman"; letter-spacing: 0.05em; }
+h3, h4 { font: 9.6pt "Roman"; }
+h2 .num, h3 .num, h4 .num { position: absolute; left: calc(-1 * var(--gutter) + 0.2in); font: 8pt "Roman";
+                            top: 0.12em; letter-spacing: 0; }
+h2 + p, h3 + p, h4 + p { text-indent: 0.3in; }
+p { margin: 0 0 0.07in; text-align: justify; hyphens: auto; }
+ul, ol { margin: 0 0 0.08in; padding-left: 0.28in; }
+li { margin-bottom: 0.02in; }
+code { font: 8.6pt "Type"; }
+u { text-underline-offset: 0.12em; }
+
+figure { margin: 0.12in 0 0.14in; break-inside: avoid; text-align: center; }
+figure .art { position: relative; display: inline-block; max-width: 100%; }
+figure .art svg, figure .art img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+figure.half .art { max-width: 58%; }
+figure.third .art { max-width: 36%; }
+figure.gray img { filter: grayscale(1) invert(1) contrast(1.1); }   /* dark screens print as ink on paper */
+figure.wide .art { width: 100%; }
+figure.wide .art svg { width: 100%; }
+.dwg { position: absolute; right: 0; bottom: -0.15in; font: 6.5pt "Letter"; letter-spacing: 0.04em; }
+figcaption { font: 9pt "Roman"; margin-top: 0.09in; }
+
+.table { margin: 0.1in 0 0.14in; break-inside: avoid; }
+.ttitle { text-align: center; font: 9pt "Roman"; margin-bottom: 0.04in; }
+table { border-collapse: collapse; margin: 0 auto; border: 1.6px solid var(--ink); font: 8.4pt/1.25 "Roman"; }
+th { font-weight: normal; border: 0.7px solid var(--ink); border-bottom: 1.4px solid var(--ink); padding: 2px 8px; }
+td { border: 0.7px solid var(--ink); padding: 1.5px 8px; vertical-align: top; }
+
+.caution, .warning, .note { margin: 0.12in 0.3in; break-inside: avoid; }
+.ctitle { text-align: center; font: bold 9pt "Roman"; letter-spacing: 0.1em; text-decoration: underline;
+          text-underline-offset: 0.15em; margin-bottom: 0.04in; }
+.warning { border: 2px solid var(--ink); padding: 0.07in 0.12in; }
+.note .ctitle { text-decoration: none; text-align: left; }
+.caution p, .warning p, .note p { margin-bottom: 0.03in; }
+
+.checklist { border: 1.4px solid var(--ink); margin: 0.12in auto; max-width: 3.6in; break-inside: avoid; }
+.chead { display: flex; justify-content: space-between; background: var(--ink); color: var(--paper);
+         font: bold 7.6pt "Letter"; letter-spacing: 0.06em; padding: 2px 6px; }
+.cbody { font: 8.3pt/1.35 "Type"; padding: 4px 8px 5px; white-space: pre-wrap; }
+
+.changed { position: relative; }
+.changed::before { content: ""; position: absolute; left: calc(-1 * var(--gutter) + 0.02in); top: 0.05in;
+                   bottom: 0.05in; width: 3.5px; background: var(--ink); }
+
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25in; align-items: start; }
+.row > div > :first-child { margin-top: 0.04in; }
+
+.display { text-align: center; margin: 0.08in 0 0.1in; break-inside: avoid; }
+.boxed svg { border: 0.8px solid var(--ink); padding: 3px 6px; }
+svg.math { overflow: visible; }
+pre { font: 7.8pt/1.3 "Type"; margin: 0.06in 0 0.1in; padding-left: 0.2in; white-space: pre-wrap; break-inside: avoid; }
+hr { border: none; border-top: 0.7px solid var(--ink); margin: 0.14in 0; }
