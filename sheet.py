@@ -47,13 +47,24 @@ the ::: blocks below add the handbook furniture.
   :::quadrant Caption                  a named 2 by 2 (handbook.quadrant)
   :::venn Caption                      overlapping sets (handbook.venn)
   :::funnel Caption                    narrowing stages (handbook.funnel)
+  :::waterfall Caption                 a running total, rise by fall (handbook.waterfall)
+  :::waffle Caption                    shares on a 10 by 10 grid (handbook.waffle)
+  :::slope Caption                     each thing from one time to another (handbook.slope)
+  :::parallel Caption                  many quantities, an axis each (handbook.parallel)
+  :::network Caption                   a graph laid out for you (handbook.network)
+  :::contour Caption                   contour lines of a field f(x, y) (handbook.contour)
+  :::polar Caption                     r(t) and wind roses (handbook.polar)
+  :::raster Caption                    a grid as gray: a spectrogram, an image (handbook.raster)
+  :::map Caption                       GeoJSON or shapefile layers, points, routes, a choropleth (handbook.map)
+  [[spark 3 5 4 8]]                    a word-sized line in prose or a table cell
   $x$  and  $$ ... $$                  inline math; a display, numbered (2.1-1) at the right
   :::equations                         one equation a line, aligned on its relation; a line that starts with
                                        a relation continues the one above, unnumbered
   :::symbols                           the "where" list: SYMBOL | MEANING | UNIT a line, symbol in TeX
   <!-- ... -->                         a comment, never printed
   # Heading                            a part heading, on a new page
-  ::::row                              side by side; columns split on a line "|||", closed by "::::"
+  ::::row                              side by side, any number of columns (small multiples); columns split on
+                                       a line "|||", closed by "::::"
   :::                                  closes a block
 
   template.md is a sheet to copy; examples/apollo/apollo.md shows every block beside its source.
@@ -120,6 +131,21 @@ def math(tex, display=False):
     return _MATH[key]
 
 
+def spark(nums):
+    """a word-sized line of a few numbers, for prose and table cells: [[spark 3 5 4 8 7]]; the last value dotted"""
+    v = [float(n) for n in nums.split()]
+    if len(v) < 2:
+        return nums
+    w, h, pad = 42.0, 8.5, 1.2
+    lo, hi = min(v), max(v)
+    span = (hi - lo) or 1
+    pts = [(pad + i * (w - 2 * pad) / (len(v) - 1), h - pad - (y - lo) / span * (h - 2 * pad)) for i, y in enumerate(v)]
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    return (f'<svg class="spark" width="{w}pt" height="{h}pt" viewBox="0 0 {w} {h}">'
+            f'<polyline points="{line}" fill="none" stroke="#111" stroke-width="0.7"/>'
+            f'<circle cx="{pts[-1][0]:.1f}" cy="{pts[-1][1]:.1f}" r="1.1" fill="#111"/></svg>')
+
+
 def inline(s, upper=False):
     """Markdown marks and $math$ to HTML; upper sets the words in capitals but leaves math and code alone"""
     held = []
@@ -128,8 +154,9 @@ def inline(s, upper=False):
         held.append(frag)
         return f"\x00{len(held) - 1}\x00"
 
-    # code first, so a $ inside backticks stays a dollar sign
+    # code first, so a $ or a [[spark]] inside backticks stays as written
     s = re.sub(r"`([^`]+)`", lambda m: hold(f"<code>{html.escape(m.group(1), quote=False)}</code>"), s)
+    s = re.sub(r"\[\[spark ((?:-?[\d.]+(?:[eE]-?\d+)?\s*)+)\]\]", lambda m: hold(spark(m.group(1))), s)
     s = re.sub(r"(?<![\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?![\w$])", lambda m: hold(math(m.group(1))), s)
     if upper:
         s = s.upper()
@@ -362,16 +389,18 @@ class Sheet:
                 else:
                     cur.append(l)
             cols.append(cur)
-            return '<div class="row">' + "".join(f"<div>{self.blocks(c)}</div>" for c in cols) + "</div>"
+            return (f'<div class="row" style="grid-template-columns: repeat({len(cols)}, 1fr)">'
+                    + "".join(f"<div>{self.blocks(c)}</div>" for c in cols) + "</div>")
         if kind == "equations":
             return self.equations(body)
         if kind == "symbols":
             return self.symbols(body)
         if kind in ("diagram", "timeline", "sequence", "signals", "budget"):
             return self.figure(getattr(handbook, kind)(text), arg, "wide")
-        if kind in ("stack", "bits", "bars", "matrix", "tree", "sankey", "treemap", "quadrant", "venn", "funnel"):
+        if kind in ("stack", "bits", "bars", "matrix", "tree", "sankey", "treemap", "quadrant", "venn", "funnel",
+                    "waterfall", "waffle", "slope", "network", "contour", "polar"):
             return self.figure(getattr(handbook, kind)(text), arg)          # drawn to print size
-        if kind in ("callouts", "scatter", "dist"):
+        if kind in ("callouts", "scatter", "dist", "parallel", "raster", "map"):
             return self.figure(getattr(handbook, kind)(text, self.base), arg)
         if kind == "plot":
             wide = re.search(r"^\s*size\s+wide\b", text, re.M)

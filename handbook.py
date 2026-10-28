@@ -31,6 +31,7 @@ import shlex
 from pathlib import Path
 
 import matplotlib
+import matplotlib.ticker
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -120,6 +121,13 @@ def _route(a, b, others=()):
     return next((r for r in (hv, vh, zv, zh) if not _hits(r, others)), hv)
 
 
+def _bow(a, b, bend):
+    """bend as written, made larger for close nodes: arc3 bows by a share of the centre-to-centre distance, and between
+    neighbours the boxes hide most of that, so a short edge needs more to read as a curve"""
+    chord = ((b["x"] - a["x"]) ** 2 + (b["y"] - a["y"]) ** 2) ** 0.5
+    return bend * max(1.0, 2.5 / max(chord, 0.1))
+
+
 def _crown(a, b, rad):
     """the top of matplotlib's arc3 curve between two node centres"""
     dx, dy = b["x"] - a["x"], b["y"] - a["y"]
@@ -136,9 +144,11 @@ def diagram(spec):
        edge FROM TO ... ends=1:N                (lettering at each end: cardinality for an ER model, 1:1 1:N N:M)
        fence "LABEL" ID ID ...
        note COL ROW "TEXT"                      (small free lettering)
-       grid DX DY                               (inches between columns and rows; default 1.55 0.78)"""
+       grid DX DY                               (inches between columns and rows; default 1.55 0.78)
+       lane "LABEL" ROW [ROWS]                  (a swimlane: a band across the diagram over that row (and the
+                                                 next ROWS-1), its owner lettered at the left; for who-does-what)"""
     global DX, DY
-    nodes, edges, fences, notes, loops = {}, [], [], [], []
+    nodes, edges, fences, notes, loops, lanes = {}, [], [], [], [], []
     keep = DX, DY
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
@@ -161,22 +171,35 @@ def diagram(spec):
                           "bottom" in rest[1:]))
         elif kind == "fence":
             fences.append(dict(label=caps(rest[0]), ids=rest[1:]))
+        elif kind == "lane":
+            lanes.append((caps(rest[0]), float(rest[1]), float(rest[2]) if len(rest) > 2 else 1.0))
         elif kind == "note":
             notes.append((float(rest[0]) * DX, -float(rest[1]) * DY, caps(rest[2])))
     xs = [n["x"] + s * n["w"] / 2 for n in nodes.values() for s in (-1, 1)] + [x for x, _, _ in notes]
     ys = [n["y"] + s * n["h"] / 2 for n in nodes.values() for s in (-1, 1)] + [y for _, y, _ in notes]
     for e in edges:                                # a curve's crown can stand outside the boxes
         if e["bend"] is not None:
-            cx, cy = _crown(nodes[e["a"]], nodes[e["b"]], e["bend"])
+            cx, cy = _crown(nodes[e["a"]], nodes[e["b"]], _bow(nodes[e["a"]], nodes[e["b"]], e["bend"]))
             xs.append(cx); ys.append(cy)
     for k, _, under in loops:
         ys.append(nodes[k]["y"] + (-1 if under else 1) * (nodes[k]["h"] / 2 + 0.42))
     pad = 0.35
     x0, x1, y0, y1 = min(xs) - pad, max(xs) + pad, min(ys) - pad, max(ys) + pad
+    if lanes:                                        # room at the left for the lanes' owners, and their full height
+        x0 -= 0.55
+        y0 = min(y0, min(-(r + n - 0.5) * DY for _, r, n in lanes))
+        y1 = max(y1, max(-(r - 0.5) * DY for _, r, _ in lanes))
     with plt.rc_context(STYLE):
         fig = plt.figure(figsize=(x1 - x0, y1 - y0))
         ax = fig.add_axes([0, 0, 1, 1])
         ax.set_xlim(x0, x1); ax.set_ylim(y0, y1); ax.set_axis_off()
+        for label, r, n in lanes:
+            top, bot = -(r - 0.5) * DY, -(r + n - 0.5) * DY
+            ax.plot([x0 + 0.05, x1 - 0.05], [top, top], color=INK, lw=0.6)
+            ax.plot([x0 + 0.05, x1 - 0.05], [bot, bot], color=INK, lw=0.6)
+            ax.plot([x0 + 0.42] * 2, [top, bot], color=INK, lw=0.6)
+            ax.text(x0 + 0.24, (top + bot) / 2, label, fontsize=5.8, rotation=90, ha="center", va="center",
+                    fontweight="bold")
         for f in fences:
             m = [nodes[i] for i in f["ids"]]
             fx0 = min(n["x"] - n["w"] / 2 for n in m) - 0.14
@@ -203,7 +226,12 @@ def diagram(spec):
                 seg = max(zip(pts[:-1], pts[1:]), key=lambda s: abs(s[1][0] - s[0][0]) + abs(s[1][1] - s[0][1]))
                 mx, my = (seg[0][0] + seg[1][0]) / 2, (seg[0][1] + seg[1][1]) / 2
                 flat = abs(seg[1][1] - seg[0][1]) < 1e-6
-                ax.text(mx, my + (0.05 if flat else 0), e["label"], fontsize=5.2, ha="center" if flat else "left",
+                label = e["label"]
+                if flat and "\n" not in label and " " in label and len(label) * 0.042 > abs(seg[1][0] - seg[0][0]):
+                    words = label.split(" ")              # wider than its run: two lines, so it stays off the boxes
+                    cut = min(range(1, len(words)), key=lambda k: abs(len(" ".join(words[:k])) - len(label) / 2))
+                    label = " ".join(words[:cut]) + "\n" + " ".join(words[cut:])
+                ax.text(mx, my + (0.05 if flat else 0), label, fontsize=5.2, ha="center" if flat else "left",
                         va="bottom" if flat else "center", linespacing=1.05,
                         bbox=None if flat else dict(fc="white", ec="none", pad=0.6))
         for n in nodes.values():
@@ -230,10 +258,12 @@ def diagram(spec):
         for e in (e for e in edges if e["bend"] is not None):
             a, b = nodes[e["a"]], nodes[e["b"]]
             ax.add_patch(FancyArrowPatch((a["x"], a["y"]), (b["x"], b["y"]), patchA=a.get("patch"), patchB=b.get("patch"),
-                                         connectionstyle=f"arc3,rad={e['bend']}", ls=(0, (4, 2.5)) if e["dash"] else "-",
+                                         connectionstyle=f"arc3,rad={_bow(a, b, e['bend'])}",
+                                         ls=(0, (4, 2.5)) if e["dash"] else "-",
                                          arrowstyle="<|-|>" if e["both"] else "-|>", shrinkA=2, shrinkB=1, **arrow))
             if e["label"]:
-                ax.text(*_crown(a, b, e["bend"]), e["label"], fontsize=5.2, ha="center", va="center", linespacing=1.05,
+                ax.text(*_crown(a, b, _bow(a, b, e["bend"])), e["label"], fontsize=5.2, ha="center", va="center",
+                        linespacing=1.05,
                         bbox=dict(fc="white", ec="none", pad=0.6))
         for k, label, under in loops:
             n = nodes[k]
@@ -256,8 +286,11 @@ def timeline(spec):
     """axis "LABEL" START END [ticks=STEP]
        bar "ROW" START END [hatch|open|solid] ["NOTE"]
        mark AT "LABEL" [dash]
-       call ROW AT "TEXT"                       (a leader from the bar row to lettering below the axis)"""
-    rows, bars, marks, calls = [], [], [], []
+       call ROW AT "TEXT"                       (a leader from the bar row to lettering below the axis)
+       milestone "ROW" AT ["LABEL"]             (a black diamond on that row: a date that has no length)
+       after "ROW A" "ROW B"                    (an arrow from the end of A's last bar to the start of B's first:
+                                                 a dependency, as on a Gantt chart)"""
+    rows, bars, marks, calls, stones, deps = [], [], [], [], [], []
     axis = dict(label="", lo=0.0, hi=1.0, step=None)
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
@@ -276,6 +309,12 @@ def timeline(spec):
             marks.append((float(rest[0]), caps(rest[1]), "dash" in rest[2:]))
         elif kind == "call":
             calls.append((rest[0], float(rest[1]), caps(rest[2])))
+        elif kind == "milestone":
+            if rest[0] not in rows:
+                rows.append(rest[0])
+            stones.append((rest[0], float(rest[1]), caps(rest[2]) if len(rest) > 2 else ""))
+        elif kind == "after":
+            deps.append((rest[0], rest[1]))
     rh = 0.22
     with plt.rc_context(STYLE):
         fig, ax = plt.subplots(figsize=(5.6, 0.55 + rh * len(rows) + (0.3 if marks else 0)))
@@ -292,6 +331,18 @@ def timeline(spec):
             y = -rows.index(row)
             ax.annotate(text, xy=(at, y - 0.32), xytext=(at, -len(rows) + 0.05), fontsize=5.2, ha="center", va="top",
                         arrowprops=dict(arrowstyle="-", color=INK, lw=0.5))
+        for row, at, label in stones:
+            y = -rows.index(row)
+            ax.plot([at], [y], marker="D", ms=5, mfc=INK, mec=INK, zorder=4)
+            if label:
+                ax.text(at + (axis["hi"] - axis["lo"]) * 0.012, y, label, fontsize=5.2, va="center")
+        for a, b in deps:
+            ea = max(e for r, _, e, _, _ in bars if r == a)
+            sb = min(st for r, st, _, _, _ in bars if r == b)
+            ya, yb = -rows.index(a), -rows.index(b)
+            ax.annotate("", xy=(sb, yb + (0.32 if yb < ya else -0.32)), xytext=(ea, ya),
+                        arrowprops=dict(arrowstyle="-|>", color=INK, lw=0.6, mutation_scale=6, shrinkA=0, shrinkB=0,
+                                        connectionstyle="angle,angleA=0,angleB=90,rad=0"))
         ax.set_yticks([-i for i in range(len(rows))], [caps(r) for r in rows])
         ax.set_ylim(-len(rows) + 0.4, 0.7)
         ax.set_xlim(axis["lo"], axis["hi"])
@@ -318,27 +369,31 @@ class _Floats(ast.NodeTransformer):
         return ast.copy_location(ast.Constant(float(node.value)), node) if type(node.value) is int else node
 
 
-def _fn(src, xs):
-    """y for a fn line: arithmetic on x, numbers and the FN names only; nothing else is evaluated"""
+def _fn(src, xs, **more):
+    """y for a fn line: arithmetic on x (and any arrays named in more), numbers and the FN names only; nothing else
+    is evaluated"""
+    env = {"x": xs, **more}
     tree = ast.parse(src, mode="eval")
     allowed = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Compare, ast.Call, ast.Name, ast.Load, ast.Constant,
                ast.operator, ast.unaryop, ast.cmpop)
     for node in ast.walk(tree):
         bad = (not isinstance(node, allowed)
-               or isinstance(node, ast.Name) and node.id != "x" and node.id not in FN
+               or isinstance(node, ast.Name) and node.id not in env and node.id not in FN
                or isinstance(node, ast.Call) and (not isinstance(node.func, ast.Name) or node.keywords)
                or isinstance(node, ast.Constant) and type(node.value) not in (int, float))
         if bad:
-            raise SystemExit(f"handbook: fn {src!r}: only x, numbers, + - * / ** < > and {' '.join(sorted(FN))}")
+            raise SystemExit(f"handbook: fn {src!r}: only {' '.join(env)}, numbers, + - * / ** < > and "
+                             f"{' '.join(sorted(FN))}")
     code = compile(ast.fix_missing_locations(_Floats().visit(tree)), "<fn>", "eval")
     with np.errstate(all="ignore"):
-        return np.broadcast_to(np.asarray(eval(code, {"__builtins__": {}}, {**FN, "x": xs}), dtype=float), xs.shape)
+        return np.broadcast_to(np.asarray(eval(code, {"__builtins__": {}}, {**FN, **env}), dtype=float), xs.shape)
 
 
 def plot(spec, base=Path(".")):
     """csv PATH                         (relative to the sheet)
        x COLUMN ["LABEL"]
-       y COLUMN ["LABEL"] [dots|step|area] [every=N]   (a series; dots for measured points, step for a staircase,
+       y COLUMN ["LABEL"] [dots|step|area] [every=N] [err=COLUMN]   (a series; dots for measured points, step for a
+                                        staircase, err= for error bars of that half-width,
                                         area to stack it as a hatched band on the area series before it;
                                         every=N keeps every Nth row, so dense dots stay dots)
        percent                          (the panel's area series as shares of their sum, 0 to 100)
@@ -360,7 +415,7 @@ def plot(spec, base=Path(".")):
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
         cur = panels[-1]
-        flags = [o for o in rest[1:] if o in ("dots", "step", "area") or o.startswith("every=")]
+        flags = [o for o in rest[1:] if o in ("dots", "step", "area") or o.startswith(("every=", "err="))]
         words = [o for o in rest[1:] if o not in flags]
         if kind == "csv":
             with open(base / rest[0], newline="") as fh:
@@ -427,6 +482,11 @@ def plot(spec, base=Path(".")):
                         ax.annotate(label, xy=(x[-1], (lo[-1] + hi[-1]) / 2), xytext=(4, 0),
                                     textcoords="offset points", fontsize=5.6, va="center", annotation_clip=False)
                     continue
+                err = next((f[4:] for f in flags if f.startswith("err=")), None)
+                if err:
+                    k = next((int(f[6:]) for f in flags if f.startswith("every=")), 1)
+                    ax.errorbar(x, y, yerr=np.asarray(cols[err], dtype=float)[::k], fmt="none", ecolor=INK,
+                                elinewidth=0.6, capsize=1.8, capthick=0.6)
                 if "dots" in flags:
                     ax.plot(x, y, ls="none", marker="o", ms=2.6, mfc="white", mec=INK, mew=0.7)
                 else:
@@ -747,10 +807,11 @@ def bars(spec):
        unit "LABEL"                  (the value axis)
        stacked                       (stack the series instead of setting them side by side)
        percent                       (stack each category as shares of its own total, 0 to 100)
+       dots                          (a dot on a thin stem instead of a bar: a dot plot, lighter for many categories)
        horizontal                    (categories down the left, values across: for long names)
        log                           (a log value axis)
        size W H                      (inches; default 3.4 by 2.2)"""
-    series, cats, unit, stacked, horiz, log, size, percent = [], [], "", False, False, False, (3.4, 2.2), False
+    series, cats, unit, stacked, horiz, log, size, percent, dots = [], [], "", False, False, False, (3.4, 2.2), False, False
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
         if kind == "series":
@@ -763,6 +824,8 @@ def bars(spec):
             stacked = True
         elif kind == "percent":
             stacked = percent = True
+        elif kind == "dots":
+            dots = True
         elif kind == "horizontal":
             horiz = True
         elif kind == "log":
@@ -782,6 +845,14 @@ def bars(spec):
                 pos = i if stacked else i - 0.375 + width * (j + 0.5)
                 fc, hatch = fills[j % len(fills)]
                 kw = dict(color=fc, edgecolor=INK, linewidth=0.7, hatch=hatch)
+                if dots and not stacked:
+                    marker = "osD^v"[j % 5]
+                    a, b = ([base, v], [-pos, -pos]) if horiz else ([pos, pos], [base, v])
+                    ax.plot(a, b, color=INK, lw=0.5)
+                    ax.plot([v] if horiz else [pos], [-pos] if horiz else [v], marker=marker,
+                            ms=3.6, mfc=INK if j == 0 else "white", mec=INK, mew=0.7, ls="none")
+                    _endlabel(ax, f"{v:g}", v, -pos if horiz else pos, horiz)
+                    continue
                 if horiz:
                     ax.barh(-pos, v, width, left=base, **kw)
                 else:
@@ -815,6 +886,11 @@ def bars(spec):
         if len(series) > 1:                          # a key, only where series must be told apart
             for j, name in enumerate(series):
                 fc, hatch = fills[j % len(fills)]
+                if dots:
+                    ax.plot([j / len(series) + 0.017], [1.065], marker="osD^v"[j % 5], ms=3.4, transform=ax.transAxes,
+                            mfc=INK if j == 0 else "white", mec=INK, clip_on=False)
+                    ax.text(j / len(series) + 0.05, 1.065, name, transform=ax.transAxes, fontsize=5.4, va="center")
+                    continue
                 x = j / len(series)
                 ax.add_patch(Rectangle((x, 1.04), 0.035, 0.05, transform=ax.transAxes, fc=fc, ec=INK, lw=0.6,
                                        hatch=hatch, clip_on=False))
@@ -1095,11 +1171,14 @@ def dist(spec, base=Path(".")):
        data "NAME" PATH COLUMN [where=COL:VALUE]      (a box from raw values in a CSV: quartiles, whiskers to 1.5 IQR,
                                                        the rest as outliers)
        violin                                          (raw rows drawn as violins round their boxes)
+       strip                                           (every raw value as a dot over its box)
+       ecdf                                            (raw rows as cumulative curves instead of boxes: the share of
+                                                        runs at or under each value, percentiles read off directly)
        hist PATH COLUMN [where=COL:VALUE] [bins=N]    (a histogram instead of boxes; one only)
        mark AT "LABEL"                                 (a dashed line across, a limit or a percentile)
        unit "LABEL"
        size W H                                        (inches; default 3.4 by 2.2)"""
-    boxes, raw, marks, unit, violin, hist, size = [], [], [], "", False, None, (3.4, 2.2)
+    boxes, raw, marks, unit, violin, hist, size, strip, ecdf = [], [], [], "", False, None, (3.4, 2.2), False, False
 
     def column(path, col, opts):
         where = opts.get("where")
@@ -1123,6 +1202,10 @@ def dist(spec, base=Path(".")):
             raw.append(vals)
         elif kind == "violin":
             violin = True
+        elif kind == "strip":
+            strip = True
+        elif kind == "ecdf":
+            ecdf = True
         elif kind == "hist":
             hist = (column(rest[0], rest[1], opts), int(opts.get("bins", 20)))
         elif kind == "mark":
@@ -1133,7 +1216,19 @@ def dist(spec, base=Path(".")):
             size = (float(rest[0]), float(rest[1]))
     with plt.rc_context(STYLE):
         fig, ax = plt.subplots(figsize=size)
-        if hist:
+        if ecdf and raw:
+            for i, (b, vals) in enumerate(zip(boxes, raw)):
+                v = np.sort(vals)
+                ax.step(v, np.arange(1, len(v) + 1) / len(v) * 100, where="post", color=INK, lw=0.9,
+                        ls=DASHES[i % len(DASHES)])
+                ax.annotate(b["label"], xy=(v[-1], 100), xytext=(3, -4 - 7 * i), textcoords="offset points",
+                            fontsize=5.4, annotation_clip=False)
+            ax.set_xlabel(unit, fontsize=6); ax.set_ylabel("% AT OR UNDER", fontsize=6)
+            for at, label in marks:
+                ax.axvline(at, color=INK, lw=0.7, ls=(0, (3, 2)))
+                ax.text(at, 1.0, label, fontsize=5.4, ha="center", va="bottom", transform=ax.get_xaxis_transform())
+            ax.grid(True, color=INK, lw=0.25, alpha=0.35)
+        elif hist:
             ax.hist(hist[0], bins=hist[1], color="white", edgecolor=INK, linewidth=0.7, hatch="//////")
             ax.set_xlabel(unit, fontsize=6); ax.set_ylabel("COUNT", fontsize=6)
             for at, label in marks:
@@ -1151,6 +1246,11 @@ def dist(spec, base=Path(".")):
                    medianprops=dict(color=INK, linewidth=1.6), whiskerprops=dict(color=INK, linewidth=0.7),
                    capprops=dict(color=INK, linewidth=0.7),
                    flierprops=dict(marker="o", markersize=2.4, markerfacecolor="white", markeredgecolor=INK))
+            if strip and raw and len(raw) == len(boxes):
+                rng = np.random.default_rng(0)                   # the same jitter every render
+                for p_, vals in zip(pos, raw):
+                    ax.plot(vals, p_ + rng.uniform(-0.12, 0.12, len(vals)), ls="none", marker="o", ms=1.6,
+                            mfc="white", mec=INK, mew=0.4, zorder=3)
             ax.set_yticks(pos, [b["label"] for b in boxes]); ax.tick_params(axis="y", length=0)
             ax.set_xlabel(unit, fontsize=6)
             for at, label in marks:
@@ -1431,3 +1531,597 @@ def funnel(spec):
             ax.text(W + 0.1, (y0 + y1) / 2, f"{v:g} {unit},  {100 * v / top:.0f} %",
                     fontsize=5.8, ha="left", va="center")
         return svg(fig)
+
+
+# -- waterfall -------------------------------------------------------------------------------------------------------
+
+def waterfall(spec):
+    """start "LABEL" V               (the opening total, a full bar)
+       step "LABEL" +V | -V          (a rise or a fall from the running total, hatched for a fall)
+       total "LABEL"                 (the running total so far, a full bar)
+       unit "LABEL"
+       size W H                      (inches; default 4.4 by 2.4)"""
+    items, unit, size = [], "", (4.4, 2.4)
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind in ("start", "step"):
+            items.append((kind, caps(rest[0]), float(rest[1])))
+        elif kind == "total":
+            items.append((kind, caps(rest[0]), None))
+        elif kind == "unit":
+            unit = caps(rest[0])
+        elif kind == "size":
+            size = (float(rest[0]), float(rest[1]))
+    if not items:
+        raise SystemExit("handbook: waterfall has no steps")
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=size)
+        run, prev_top = 0.0, None
+        for i, (kind, label, v) in enumerate(items):
+            if kind == "step":
+                lo, hi = sorted((run, run + v))
+                ax.bar(i, hi - lo, 0.62, bottom=lo, color="white", edgecolor=INK, linewidth=0.7,
+                       hatch="//////" if v < 0 else None)
+                run += v
+                ax.annotate(f"{v:+g}", xy=(i, hi), xytext=(0, 2), textcoords="offset points", fontsize=5.4,
+                            ha="center", va="bottom")
+            else:
+                run = v if kind == "start" else run
+                ax.bar(i, run, 0.62, color=INK, edgecolor=INK, linewidth=0.7)
+                ax.annotate(f"{run:g}", xy=(i, max(run, 0)), xytext=(0, 2), textcoords="offset points",
+                            fontsize=5.4, ha="center", va="bottom")
+            if prev_top is not None:                      # a thin rule carries the total across
+                ax.plot([i - 1 + 0.31, i - 0.31], [prev_top, prev_top], color=INK, lw=0.5, ls=(0, (2, 1.5)))
+            prev_top = run
+        ax.set_xticks(range(len(items)), [l for _, l, _ in items]); ax.tick_params(axis="x", length=0)
+        ax.axhline(0, color=INK, lw=0.6)
+        ax.set_ylabel(unit, fontsize=6)
+        ax.grid(True, axis="y", color=INK, lw=0.25, alpha=0.35); ax.set_axisbelow(True)
+        ax.margins(y=0.12)
+        return svg(fig)
+
+
+# -- waffle ----------------------------------------------------------------------------------------------------------
+
+def waffle(spec):
+    """part "LABEL" V                (shares of a whole on a 10 by 10 grid, one square a percent, in order)
+       cells N                       (squares a side; default 10)"""
+    parts, n = [], 10
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "part":
+            parts.append((caps(rest[0]), float(rest[1])))
+        elif kind == "cells":
+            n = int(rest[0])
+    total = sum(v for _, v in parts)
+    if total <= 0:
+        raise SystemExit("handbook: waffle has nothing above zero")
+    counts = [round(v / total * n * n) for _, v in parts]
+    counts[-1] += n * n - sum(counts)                    # rounding settles on the last part
+    fills = [(INK, None), ("white", "//////"), ("white", "xxxx"), ("white", "...."), ("white", None)]
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(4.4, 2.2))
+        ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off(); ax.set_aspect("equal")
+        c = 1.9 / n
+        k = 0
+        for j, cnt in enumerate(counts):
+            fc, hatch = fills[j % len(fills)]
+            for _ in range(cnt):
+                col, row = divmod(k, n)                  # fill column by column, top to bottom
+                ax.add_patch(Rectangle((col * c, -(row + 1) * c), c * 0.86, c * 0.86, fc=fc, ec=INK, lw=0.4,
+                                       hatch=hatch))
+                k += 1
+            ax.add_patch(Rectangle((2.15, -0.2 - j * 0.26), 0.14, 0.14, fc=fc, ec=INK, lw=0.5, hatch=hatch))
+            ax.text(2.36, -0.13 - j * 0.26, f"{parts[j][0]}  {100 * parts[j][1] / total:.0f} %", fontsize=6,
+                    va="center")
+        ax.set_xlim(-0.05, 4.3); ax.set_ylim(-2.0, 0.05)
+        return svg(fig)
+
+
+# -- slope -----------------------------------------------------------------------------------------------------------
+
+def slope(spec):
+    """heads "BEFORE" "AFTER"        (the two columns' names: two dates, two builds, two conditions)
+       item "NAME" A B               (one line a thing; it runs from A to B, lettered at both ends)
+       unit "LABEL"
+       log"""
+    heads, items, unit, log = ("", ""), [], "", False
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "heads":
+            heads = (caps(rest[0]), caps(rest[1]))
+        elif kind == "item":
+            items.append((caps(rest[0]), float(rest[1]), float(rest[2])))
+        elif kind == "unit":
+            unit = caps(rest[0])
+        elif kind == "log":
+            log = True
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=(3.6, 2.8))
+        for i, (name, a, b) in enumerate(items):
+            ax.plot([0, 1], [a, b], color=INK, lw=0.8, ls=DASHES[i % len(DASHES)], marker="o", ms=2.8, mfc="white")
+            ax.annotate(f"{name}  {a:g}", xy=(0, a), xytext=(-5, 0), textcoords="offset points", fontsize=5.4,
+                        ha="right", va="center")
+            ax.annotate(f"{b:g}  {name}", xy=(1, b), xytext=(5, 0), textcoords="offset points", fontsize=5.4,
+                        ha="left", va="center")
+        if log:
+            ax.set_yscale("log")
+        ax.yaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+        ax.set_xlim(-0.05, 1.05); ax.set_xticks([0, 1], heads); ax.tick_params(axis="x", length=0)
+        ax.set_yticks([]); ax.spines["left"].set_visible(False)
+        for x in (0, 1):
+            ax.axvline(x, color=INK, lw=0.5)
+        ax.set_ylabel(unit, fontsize=6)
+        return svg(fig)
+
+
+# -- parallel coordinates --------------------------------------------------------------------------------------------
+
+def parallel(spec, base=Path(".")):
+    """axes "A" "B" "C" ...          (one vertical axis a quantity, left to right, each scaled to its own range)
+       item "NAME" VA VB VC ...       (one line a thing, across every axis)
+       csv PATH NAMECOL COL COL ...   (items from a CSV instead)"""
+    axes, items = [], []
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "axes":
+            axes = [caps(a) for a in rest]
+        elif kind == "item":
+            items.append((caps(rest[0]), [float(v) for v in rest[1:]]))
+        elif kind == "csv":
+            with open(base / rest[0], newline="") as fh:
+                for row in csv.DictReader(fh):
+                    items.append((caps(row[rest[1]]), [float(row[c]) for c in rest[2:]]))
+            axes = axes or [caps(c) for c in rest[2:]]
+    data = np.array([v for _, v in items], dtype=float)
+    lo, hi = data.min(axis=0), data.max(axis=0)
+    span = np.where(hi > lo, hi - lo, 1)
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=(max(3.4, 1.1 * len(axes)), 2.4))
+        ends = []
+        for i, (name, v) in enumerate(items):
+            y = (np.asarray(v) - lo) / span
+            ax.plot(range(len(axes)), y, color=INK, lw=0.8, ls=DASHES[i % len(DASHES)], marker="o", ms=2.2,
+                    mfc="white")
+            ends.append((y[-1], name))
+        for (y, name), ly in zip(sorted(ends), _spread([e[0] for e in sorted(ends)], 0.08)):
+            ax.annotate(name, xy=(len(axes) - 1, y), xytext=(len(axes) - 1 + 0.12, ly), fontsize=5.4, va="center",
+                        annotation_clip=False, arrowprops=dict(arrowstyle="-", color=INK, lw=0.4) if abs(ly - y) > 0.01
+                        else None)
+        for j, a in enumerate(axes):
+            ax.axvline(j, color=INK, lw=0.7)
+            ax.text(j, -0.08, f"{lo[j]:g}", fontsize=5, ha="center", va="top")
+            ax.text(j, 1.06, f"{hi[j]:g}", fontsize=5, ha="center", va="bottom")
+        ax.set_xticks(range(len(axes)), axes); ax.tick_params(axis="x", length=0, pad=10)
+        ax.set_yticks([]); ax.spines["left"].set_visible(False); ax.spines["bottom"].set_visible(False)
+        ax.set_ylim(-0.12, 1.1)
+        return svg(fig)
+
+
+def _spread(ys, gap):
+    """ys, sorted ascending, moved apart to at least gap, the run kept centred on where it was"""
+    out = []
+    for y in ys:
+        out.append(max(y, out[-1] + gap) if out else y)
+    shift = (sum(ys) - sum(out)) / len(out) if out else 0
+    return [y + shift for y in out]
+
+
+# -- network ---------------------------------------------------------------------------------------------------------
+
+def network(spec):
+    """node ID "LABEL" [box|round|dash|drum]   (optional: a node needs no line of its own unless it wants a label)
+       link A B ["LABEL"] [dash] [arrow]       (an edge; arrow for a direction)
+       layout spring|circle                    (spring, the default, pulls linked nodes together)
+       size W H                                (inches; default 5 by 3)
+     for graphs with no natural rows and columns: dependencies, a mesh, who talks to whom"""
+    nodes, links, layout, size = {}, [], "spring", (5.0, 3.0)
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "node":
+            nodes[rest[0]] = dict(label=caps(rest[1]) if len(rest) > 1 else caps(rest[0]),
+                                  shape=next((o for o in rest[2:] if o in ("box", "round", "dash", "drum")), "round"))
+        elif kind == "link":
+            for k in rest[:2]:
+                nodes.setdefault(k, dict(label=caps(k), shape="round"))
+            label = next((o for o in rest[2:] if o not in ("dash", "arrow")), "")
+            links.append((rest[0], rest[1], caps(label), "dash" in rest[2:], "arrow" in rest[2:]))
+        elif kind == "layout":
+            layout = rest[0]
+        elif kind == "size":
+            size = (float(rest[0]), float(rest[1]))
+    ids = list(nodes)
+    n = len(ids)
+    if not n:
+        raise SystemExit("handbook: network has no nodes")
+    ang = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    pos = np.c_[np.cos(ang), np.sin(ang)]
+    if layout == "spring" and n > 2:                  # Fruchterman-Reingold from the circle, deterministic
+        idx = {k: i for i, k in enumerate(ids)}
+        k_ = 1.6 / np.sqrt(n)
+        temp = 0.2
+        for _ in range(300):
+            d = pos[:, None, :] - pos[None, :, :]
+            dist = np.linalg.norm(d, axis=2) + 1e-9
+            disp = (d / dist[..., None] * (k_ ** 2 / dist)[..., None]).sum(axis=1)
+            for a, b, *_ in links:
+                i, j = idx[a], idx[b]
+                delta = pos[i] - pos[j]
+                f = np.linalg.norm(delta) ** 2 / k_
+                step = delta / (np.linalg.norm(delta) + 1e-9) * f
+                disp[i] -= step; disp[j] += step
+            length = np.linalg.norm(disp, axis=1)[:, None] + 1e-9
+            pos += disp / length * np.minimum(length, temp)
+            temp *= 0.985
+    pos -= pos.min(axis=0)
+    pos /= np.where(pos.max(axis=0) > 0, pos.max(axis=0), 1)
+    W, H = size
+    xy = {k: (0.6 + pos[i, 0] * (W - 1.2), 0.3 + pos[i, 1] * (H - 0.6)) for i, k in enumerate(ids)}
+    bw, bh = 0.85, 0.3
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=size)
+        ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
+        ax.set_xlim(0, W); ax.set_ylim(0, H)
+        patches = {}
+        for k, nd in nodes.items():
+            x, y = xy[k]
+            rad = 0.14 if nd["shape"] == "round" else 0.0
+            patches[k] = ax.add_patch(FancyBboxPatch((x - bw / 2, y - bh / 2), bw, bh, fc="white", ec=INK, lw=0.8,
+                                                     boxstyle=f"round,pad=0,rounding_size={rad}", zorder=2,
+                                                     ls=(0, (4, 2)) if nd["shape"] == "dash" else "-"))
+            ax.text(x, y, nd["label"], fontsize=5.6, ha="center", va="center", zorder=3, linespacing=1.05)
+        for a, b, label, dash, arrow in links:
+            ax.add_patch(FancyArrowPatch(xy[a], xy[b], patchA=patches[a], patchB=patches[b],
+                                         arrowstyle="-|>" if arrow else "-", mutation_scale=7, color=INK, lw=0.7,
+                                         ls=(0, (4, 2.5)) if dash else "-", zorder=1))
+            if label:
+                ax.text((xy[a][0] + xy[b][0]) / 2, (xy[a][1] + xy[b][1]) / 2, label, fontsize=5, ha="center",
+                        va="center", bbox=dict(fc="white", ec="none", pad=0.4), zorder=1.5)
+        return svg(fig)
+
+
+# -- contour ---------------------------------------------------------------------------------------------------------
+
+def contour(spec):
+    """fn "EXPR"                     (a field f(x, y) in the fn terms of :::plot, with y as well as x)
+       range X0 X1 Y0 Y1 [N]         (the window; N points a side, default 200)
+       levels V V V ... | levels N   (the contour values, or how many)
+       xlabel "LABEL" / ylabel "LABEL"
+       point X Y "LABEL"             (a marked spot: a source, a station, a design point)
+       arrows N                      (the field, minus the gradient of f, as N by N arrows of length by strength:
+                                      flow down a potential, wind round a low; arrows 0 for none)
+       size W H                      (inches; default 3.4 by 2.8)"""
+    src, rng, levels, xlabel, ylabel, pts, size = None, (-1, 1, -1, 1, 200), 8, "", "", [], (3.4, 2.8)
+    arrows = 0
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "fn":
+            src = rest[0]
+        elif kind == "range":
+            rng = tuple(float(v) for v in rest[:4]) + ((int(rest[4]),) if len(rest) > 4 else (200,))
+        elif kind == "levels":
+            levels = int(rest[0]) if len(rest) == 1 and rest[0].isdigit() else [float(v) for v in rest]
+        elif kind == "xlabel":
+            xlabel = caps(rest[0])
+        elif kind == "ylabel":
+            ylabel = caps(rest[0])
+        elif kind == "point":
+            pts.append((float(rest[0]), float(rest[1]), caps(rest[2]) if len(rest) > 2 else ""))
+        elif kind == "arrows":
+            arrows = int(rest[0])
+        elif kind == "size":
+            size = (float(rest[0]), float(rest[1]))
+    if not src:
+        raise SystemExit("handbook: contour needs a fn line")
+    x0, x1, y0, y1, n = rng
+    X, Y = np.meshgrid(np.linspace(x0, x1, int(n)), np.linspace(y0, y1, int(n)))
+    Z = _fn(src, X, y=Y)
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=size)
+        cs = ax.contour(X, Y, Z, levels=levels, colors=INK, linewidths=0.6)
+        ax.clabel(cs, fontsize=5, fmt="%g", inline_spacing=2)
+        if arrows:
+            ax_, ay_ = np.meshgrid(np.linspace(x0, x1, arrows + 2)[1:-1], np.linspace(y0, y1, arrows + 2)[1:-1])
+            h = 1e-4 * max(x1 - x0, y1 - y0)
+            u = -(_fn(src, ax_ + h, y=ay_) - _fn(src, ax_ - h, y=ay_)) / (2 * h)
+            v = -(_fn(src, ax_, y=ay_ + h) - _fn(src, ax_, y=ay_ - h)) / (2 * h)
+            mag = np.hypot(u, v)
+            cap = np.nanpercentile(mag, 90) or 1                # the strongest tenth drawn at full length
+            k = np.minimum(mag, cap) / np.where(mag > 0, mag, 1)
+            ax.quiver(ax_, ay_, u * k, v * k, color=INK, width=0.004, headwidth=3.5, headlength=4, pivot="mid",
+                      scale=cap * arrows * 1.3, scale_units="width")
+        for x, y, label in pts:
+            ax.plot([x], [y], marker="+", ms=6, mec=INK, mew=0.9)
+            if label:
+                ax.annotate(label, xy=(x, y), xytext=(4, 3), textcoords="offset points", fontsize=5.4,
+                            bbox=dict(fc="white", ec="none", pad=0.3))
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlabel(xlabel, fontsize=6); ax.set_ylabel(ylabel, fontsize=6)
+        return svg(fig)
+
+
+# -- polar -----------------------------------------------------------------------------------------------------------
+
+def polar(spec):
+    """fn "EXPR" ["LABEL"]           (r as a function of t, the angle in radians: an antenna pattern, a cardioid)
+       rose DIRECTION VALUE          (a wedge on a compass rose: DIRECTION in degrees from north, clockwise, or N NE E ...)
+       width DEGREES                 (each rose wedge's width; default 22.5, the 16 points of the compass)
+       compass                       (north up and clockwise, as for a wind rose; implied by rose)
+       db                            (r is in dB, the outer ring 0)
+       size W                        (inches; default 2.8)"""
+    fns, rose, width, compass, db, size = [], [], None, False, False, 2.8
+    names = {"N": 0, "NNE": 22.5, "NE": 45, "ENE": 67.5, "E": 90, "ESE": 112.5, "SE": 135, "SSE": 157.5, "S": 180,
+             "SSW": 202.5, "SW": 225, "WSW": 247.5, "W": 270, "WNW": 292.5, "NW": 315, "NNW": 337.5}
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "fn":
+            fns.append((rest[0], caps(rest[1]) if len(rest) > 1 else ""))
+        elif kind == "rose":
+            d = names.get(rest[0].upper())
+            rose.append((float(rest[0]) if d is None else d, float(rest[1])))
+            compass = True
+        elif kind == "width":
+            width = float(rest[0])
+        elif kind == "compass":
+            compass = True
+        elif kind == "db":
+            db = True
+        elif kind == "size":
+            size = float(rest[0])
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(size, size))
+        ax = fig.add_subplot(projection="polar")
+        if compass:
+            ax.set_theta_zero_location("N"); ax.set_theta_direction(-1)
+        t = np.linspace(0, 2 * np.pi, 721)
+        for i, (src, label) in enumerate(fns):
+            r = _fn(src, t, t=t)
+            ax.plot(t, r, color=INK, lw=0.9, ls=DASHES[i % len(DASHES)])
+            if label:
+                k = int(np.argmax(r))
+                ax.annotate(label, xy=(t[k], r[k]), xytext=(4, 4), textcoords="offset points", fontsize=5.4)
+        if rose:
+            w = np.radians(width or 22.5) * 0.85
+            ax.bar([np.radians(d) for d, _ in rose], [v for _, v in rose], width=w, color="white", edgecolor=INK,
+                   linewidth=0.7, hatch="//////")
+        if db:
+            ax.set_rlabel_position(100)
+        ax.grid(True, color=INK, lw=0.3, alpha=0.5)
+        ax.tick_params(labelsize=5.4)
+        if compass:
+            ax.set_xticks(np.radians([0, 90, 180, 270]), ["N", "E", "S", "W"])
+        return svg(fig)
+
+
+# -- raster ----------------------------------------------------------------------------------------------------------
+
+def raster(spec, base=Path(".")):
+    """csv PATH                      (a grid of numbers, a row a line, no header: a spectrogram, a waterfall, an image)
+       fn "EXPR"                     (or a field f(x, y), as for :::contour)
+       extent X0 X1 Y0 Y1            (what the grid spans; the first csv row is the top)
+       range LO HI                   (the values set white and black; default the data's own)
+       xlabel "LABEL" / ylabel "LABEL" / unit "LABEL"   (unit labels the scale bar)
+       log                           (shade by the log of the value)
+       size W H                      (inches; default 4.4 by 2.4)
+     ink only: low values light, high values dark, with a scale at the right"""
+    grid, src, ext, lim, xlabel, ylabel, unit, log, size = None, None, None, None, "", "", "", False, (4.4, 2.4)
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "csv":
+            with open(base / rest[0], newline="") as fh:
+                grid = np.array([[float(v) for v in row] for row in csv.reader(fh) if row])
+        elif kind == "fn":
+            src = rest[0]
+        elif kind == "extent":
+            ext = tuple(float(v) for v in rest[:4])
+        elif kind == "range":
+            lim = (float(rest[0]), float(rest[1]))
+        elif kind == "xlabel":
+            xlabel = caps(rest[0])
+        elif kind == "ylabel":
+            ylabel = caps(rest[0])
+        elif kind == "unit":
+            unit = caps(rest[0])
+        elif kind == "log":
+            log = True
+        elif kind == "size":
+            size = (float(rest[0]), float(rest[1]))
+    ext = ext or (0, 1, 0, 1)
+    if grid is None and src:
+        X, Y = np.meshgrid(np.linspace(ext[0], ext[1], 300), np.linspace(ext[3], ext[2], 200))
+        grid = _fn(src, X, y=Y)
+    if grid is None:
+        raise SystemExit("handbook: raster needs a csv or a fn line")
+    data = np.log10(np.clip(grid, 1e-12, None)) if log else grid
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=size)
+        im = ax.imshow(data, cmap="Greys", extent=ext, aspect="auto", interpolation="nearest",
+                       vmin=lim[0] if lim else None, vmax=lim[1] if lim else None)
+        bar = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+        bar.outline.set_linewidth(0.6); bar.ax.tick_params(labelsize=5.4, width=0.5)
+        bar.set_label(("LOG10 " if log else "") + unit, fontsize=5.6)
+        ax.set_xlabel(xlabel, fontsize=6); ax.set_ylabel(ylabel, fontsize=6)
+        return svg(fig)
+
+
+# -- map -------------------------------------------------------------------------------------------------------------
+
+def _read_shapes(path):
+    """[(properties, kind, [ring or line of (lon, lat)])] from GeoJSON, or from a shapefile with its .dbf"""
+    import json
+    import struct
+    path = Path(path)
+    out = []
+    if path.suffix == ".shp":
+        data = path.read_bytes()
+        props = _dbf(path.with_suffix(".dbf")) if path.with_suffix(".dbf").exists() else []
+        pos, i = 100, 0
+        while pos < len(data):
+            length = struct.unpack(">i", data[pos + 4:pos + 8])[0]
+            rec = data[pos + 8: pos + 8 + 2 * length]
+            pos += 8 + 2 * length
+            kind = struct.unpack("<i", rec[:4])[0]
+            p = props[i] if i < len(props) else {}
+            i += 1
+            if kind == 1:
+                out.append((p, "point", [[struct.unpack("<dd", rec[4:20])]]))
+            elif kind in (3, 5):
+                nparts, npts = struct.unpack("<ii", rec[36:44])
+                parts = list(struct.unpack(f"<{nparts}i", rec[44:44 + 4 * nparts])) + [npts]
+                b = 44 + 4 * nparts
+                pts = [struct.unpack("<dd", rec[b + 16 * k: b + 16 * k + 16]) for k in range(npts)]
+                out.append((p, "line" if kind == 3 else "polygon", [pts[a:z] for a, z in zip(parts, parts[1:])]))
+        return out
+    gj = json.loads(path.read_text())
+    feats = gj["features"] if gj.get("type") == "FeatureCollection" else [gj]
+    for f in feats:
+        g, p = f.get("geometry") or {}, f.get("properties") or {}
+        t, c = g.get("type"), g.get("coordinates")
+        if t == "Point":
+            out.append((p, "point", [[c]]))
+        elif t == "MultiPoint":
+            out.append((p, "point", [c]))
+        elif t == "LineString":
+            out.append((p, "line", [c]))
+        elif t == "MultiLineString":
+            out.append((p, "line", c))
+        elif t == "Polygon":
+            out.append((p, "polygon", c))
+        elif t == "MultiPolygon":
+            out.append((p, "polygon", [ring for poly in c for ring in poly]))
+    return out
+
+
+def _dbf(path):
+    import struct
+    data = Path(path).read_bytes()
+    nrec, hlen, rlen = struct.unpack("<IHH", data[4:12])
+    fields, pos = [], 32
+    while data[pos] != 0x0D:
+        fields.append((data[pos:pos + 11].split(b"\0")[0].decode(), data[pos + 16]))
+        pos += 32
+    rows = []
+    for i in range(nrec):
+        rec, row, p = data[hlen + i * rlen + 1: hlen + (i + 1) * rlen], {}, 0
+        for name, size in fields:
+            row[name] = rec[p:p + size].decode("latin-1").replace("\0", "").strip()
+            p += size
+        rows.append(row)
+    return rows
+
+
+def map(spec, base=Path(".")):
+    """layer PATH [line|fill|hatch|heavy|dash] [key=PROPERTY]
+                                     (GeoJSON or a shapefile, drawn in order: line for outlines, fill for a light tint,
+                                      hatch for an area such as a forecast cone, heavy and dash for weight)
+       value "NAME" V                (shade the feature whose key property is NAME by V: a choropleth, keyed below)
+       extent LON0 LON1 LAT0 LAT1    (the window, in degrees; default all the layers)
+       point LON LAT ["LABEL"] [dot|ring|cross|star]
+       route LON LAT LON LAT ... ["LABEL"] [dash]     (a track or a path, joined in order)
+       graticule STEP                (a lat-lon grid every STEP degrees, lettered at the edges)
+       scale KM                      (a scale bar that long)
+       size W                        (inches wide; the height follows the extent; default 5)
+     projection: equirectangular, squeezed by cos(latitude) at the middle, true enough for a region"""
+    layers, values, ext, pts, routes, grat, scale, width = [], {}, None, [], [], None, None, 5.0
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        opts = dict(o.split("=", 1) for o in rest if "=" in o)
+        words = [r for r in rest if "=" not in r]
+        if kind == "layer":
+            layers.append((_read_shapes(base / words[0]), set(words[1:]) or {"line"}, opts.get("key")))
+        elif kind == "value":
+            values[words[0]] = float(words[1])
+        elif kind == "extent":
+            ext = tuple(float(v) for v in words[:4])
+        elif kind == "point":
+            label = next((w for w in words[2:] if w not in ("dot", "ring", "cross", "star")), "")
+            style = next((w for w in words[2:] if w in ("dot", "ring", "cross", "star")), "dot")
+            pts.append((float(words[0]), float(words[1]), caps(label), style))
+        elif kind == "route":
+            nums = [w for w in words if _isnum(w)]
+            label = next((w for w in words if not _isnum(w) and w != "dash"), "")
+            routes.append((list(zip(map_float(nums[0::2]), map_float(nums[1::2]))), caps(label), "dash" in words))
+        elif kind == "graticule":
+            grat = float(words[0])
+        elif kind == "scale":
+            scale = float(words[0])
+        elif kind == "size":
+            width = float(words[0])
+    if ext is None:
+        allp = [q for shapes, _, _ in layers for _, _, parts in shapes for part in parts for q in part]
+        allp += [(x, y) for x, y, _, _ in pts] + [q for r, _, _ in routes for q in r]
+        if not allp:
+            raise SystemExit("handbook: map has nothing to draw")
+        xs_, ys_ = [q[0] for q in allp], [q[1] for q in allp]
+        ext = (min(xs_), max(xs_), min(ys_), max(ys_))
+    lon0, lon1, lat0, lat1 = ext
+    k = np.cos(np.radians((lat0 + lat1) / 2))
+    proj = lambda lon, lat: ((lon - lon0) * k, lat - lat0)
+    w_deg, h_deg = (lon1 - lon0) * k, lat1 - lat0
+    height = width * h_deg / w_deg
+    vmax = max(values.values(), default=1) or 1
+    vmin = min(values.values(), default=0)
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(width, height + (0.35 if values else 0)))
+        ax = fig.add_axes([0, (0.35 / (height + 0.35)) if values else 0, 1, height / (height + (0.35 if values else 0))])
+        ax.set_xlim(0, w_deg); ax.set_ylim(0, h_deg); ax.set_aspect("equal")
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(True); sp.set_linewidth(1.0)
+        for shapes, style, key in layers:
+            for props, kind, parts in shapes:
+                name = str(props.get(key, "")) if key else ""
+                v = values.get(name)
+                for part in parts:
+                    xy = [proj(lon, lat) for lon, lat in part]
+                    if kind == "polygon":
+                        tint = (str(1 - 0.75 * (v - vmin) / ((vmax - vmin) or 1)) if v is not None else
+                                "#ececec" if "fill" in style else "none")
+                        ax.add_patch(plt.Polygon(xy, closed=True, fc=tint, ec=INK, hatch="//////" if "hatch" in style else None,
+                                                 lw=1.0 if "heavy" in style else 0.45,
+                                                 ls=(0, (4, 2)) if "dash" in style else "-"))
+                    elif kind == "line":
+                        ax.plot(*zip(*xy), color=INK, lw=1.0 if "heavy" in style else 0.5,
+                                ls=(0, (4, 2)) if "dash" in style else "-")
+                    else:
+                        ax.plot(*zip(*xy), ls="none", marker="o", ms=1.6, color=INK)
+        if grat:
+            for lon in np.arange(np.ceil(lon0 / grat) * grat, lon1 + 1e-9, grat):
+                ax.plot([proj(lon, lat0)[0]] * 2, [0, h_deg], color=INK, lw=0.25, ls=(0, (1, 2)))
+                ax.text(proj(lon, lat0)[0], -0.05 * h_deg / 3, f"{abs(lon):g}°{'W' if lon < 0 else 'E'}",
+                        fontsize=5, ha="center", va="top")
+            for lat in np.arange(np.ceil(lat0 / grat) * grat, lat1 + 1e-9, grat):
+                ax.plot([0, w_deg], [lat - lat0] * 2, color=INK, lw=0.25, ls=(0, (1, 2)))
+                ax.text(-0.02 * w_deg / 3, lat - lat0, f"{abs(lat):g}°{'S' if lat < 0 else 'N'}", fontsize=5,
+                        ha="right", va="center")
+        for r, label, dash in routes:
+            xy = [proj(*q) for q in r]
+            ax.plot(*zip(*xy), color=INK, lw=1.1, ls=(0, (4, 2)) if dash else "-", zorder=4)
+            if label:
+                ax.annotate(label, xy=xy[-1], xytext=(4, 3), textcoords="offset points", fontsize=5.6,
+                            bbox=dict(fc="white", ec="none", pad=0.4), zorder=5)
+        for lon, lat, label, style in pts:
+            x, y = proj(lon, lat)
+            m = {"dot": ("o", INK), "ring": ("o", "white"), "cross": ("+", INK), "star": ("*", INK)}[style]
+            ax.plot([x], [y], marker=m[0], ms=4 if style != "star" else 6, mfc=m[1], mec=INK, mew=0.8, zorder=6)
+            if label:
+                ax.annotate(label, xy=(x, y), xytext=(4, 3), textcoords="offset points", fontsize=5.6, zorder=6,
+                            bbox=dict(fc="white", ec="none", pad=0.4))
+        if scale:
+            deg = scale / (111.32 * k) * k              # km to projected units along the parallel
+            x0_, y0_ = 0.04 * w_deg, 0.05 * h_deg
+            ax.add_patch(Rectangle((x0_, y0_), deg, 0.012 * h_deg + 0.02, fc=INK, ec=INK, zorder=7))
+            ax.text(x0_ + deg / 2, y0_ + 0.03 * h_deg, f"{scale:g} KM", fontsize=5.4, ha="center", va="bottom",
+                    zorder=7, bbox=dict(fc="white", ec="none", pad=0.3))
+        if values:                                   # the key for a choropleth: light to dark
+            kx = fig.add_axes([0.3, 0.02, 0.4, 0.25 / (height + 0.35)])
+            kx.imshow(np.linspace(0, 1, 100)[None, :], cmap="Greys", vmin=0, vmax=1 / 0.75, aspect="auto",
+                      extent=(vmin, vmax, 0, 1))
+            kx.set_yticks([]); kx.tick_params(labelsize=5.2, length=2)
+            for sp in kx.spines.values():
+                sp.set_linewidth(0.5)
+        return svg(fig)
+
+
+def map_float(seq):
+    return [float(v) for v in seq]
