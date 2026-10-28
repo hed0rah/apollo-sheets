@@ -7,7 +7,8 @@ bars and a black edge tab. US Letter, black ink, made to be printed and read wit
 Any plain Markdown report renders as it is. Front matter and a few `:::` blocks add the handbook furniture,
 including line-art block diagrams and graphs, timelines, plots, memory maps, bit fields, bar charts, comparison
 matrices and heatmaps, trees, labelled pictures, scatter plots, distributions, sankeys, treemaps, quadrants, Venn
-diagrams and funnels, all drawn from text.
+diagrams, funnels, maps, contours, rasters, polar plots, waterfalls, waffles, slopes, parallel axes, networks and
+sparklines, all drawn from text.
 
 | | | |
 |---|---|---|
@@ -15,7 +16,8 @@ diagrams and funnels, all drawn from text.
 | [apollo](examples/apollo/apollo.md): the reference sheet, every block beside its source | [rc-filter](examples/rc-filter/rc-filter.md): diagram, math, log plot | [lander](examples/lander/lander.md): timeline, checklists, cream paper |
 
 Start a new sheet from [template.md](template.md). [kitchen-sink](examples/kitchen-sink/kitchen-sink.md) and
-[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens.
+[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens. [CATALOG.md](CATALOG.md) chooses a
+figure by the job it does, with a snippet for each; `python catalog_check.py` renders every snippet on one sheet.
 
 ## Requirements
 
@@ -76,26 +78,36 @@ Quote values that contain a colon.
 | `:::note` / `:::caution` / `:::warning` | the three call-outs |
 | `:::checklist TITLE \| ROLE` | a boxed procedure in typewriter |
 | `:::changed` | change bar in the gutter |
-| `::::row` ... `\|\|\|` ... `::::` | side-by-side columns |
-| `:::diagram Caption` | block diagram or graph: boxes, diamonds, curved back-edges, loops, `ends=1:N` for ER |
-| `:::timeline Caption` | bars on one time axis |
-| `:::plot Caption` | lines from a CSV, or exact curves from `fn`; `area` and `percent` bands; `panel` stacks panels on one x |
+| `::::row` ... `\|\|\|` ... `::::` | side-by-side columns, any number: small multiples |
+| `[[spark 3 5 4 8]]` | a word-sized line in prose or a table cell |
+| `:::diagram Caption` | block diagram or graph: boxes, diamonds, curved back-edges, loops, `ends=1:N` for ER, `lane` for swimlanes |
+| `:::timeline Caption` | bars on one time axis; `milestone` and `after` for a Gantt chart |
+| `:::plot Caption` | lines from a CSV, or exact curves from `fn`; `area` and `percent` bands; `err=` error bars; `panel` stacks panels on one x |
 | `:::sequence Caption` | messages between actors |
 | `:::signals Caption` | a timing diagram |
 | `:::budget Caption` | used against capacity, one gauge a line |
 | `:::stack Caption` | layers top to bottom: a protocol stack, a memory map with `at=` addresses |
 | `:::bits Caption` | register or packet fields, wrapped into rows of bits |
-| `:::bars Caption` | categorical bars: grouped, `stacked`, `percent`, `horizontal`, `log` |
+| `:::bars Caption` | categorical bars: grouped, `stacked`, `percent`, `dots`, `horizontal`, `log` |
 | `:::matrix Caption` | a comparison: `yes` / `part` / `no` dots, numbers as sized dots; `shade` for a heatmap |
 | `:::tree Caption` | a hierarchy from an indented outline |
 | `:::callouts Caption` | leaders from points on a PNG to lettering in its margins |
 | `:::scatter Caption` | points and bubbles, from lines or a CSV; `fit` draws the least-squares line |
-| `:::dist Caption` | box plots from five numbers or raw CSV values, `violin`, or a `hist` |
+| `:::dist Caption` | box plots from five numbers or raw CSV values, `violin`, `strip`, `ecdf`, or a `hist` |
 | `:::sankey Caption` | flows between stages, ribbons as wide as their values |
 | `:::treemap Caption` | nested shares from an indented outline |
 | `:::quadrant Caption` | a named 2 by 2 with points on it |
 | `:::venn Caption` | two or three overlapping sets, regions lettered |
 | `:::funnel Caption` | narrowing stages, each with its share of the first |
+| `:::waterfall Caption` | a running total, rise by fall |
+| `:::waffle Caption` | shares on a 10 by 10 grid, a square a percent |
+| `:::slope Caption` | each thing from one time to another |
+| `:::parallel Caption` | many quantities, an axis each |
+| `:::network Caption` | a graph laid out by a spring model |
+| `:::contour Caption` | contour lines of a field f(x, y), with field arrows |
+| `:::raster Caption` | a grid as gray with a scale: a spectrogram, an image |
+| `:::polar Caption` | r(t), or a wind rose with `rose` |
+| `:::map Caption` | GeoJSON or shapefile layers, hatched zones, routes, points, graticule, scale; `key=` and `value` for a choropleth |
 
 A block that holds blocks takes four colons: `::::changed` around an `:::equations`, like `::::row`. A block
 that never closes, a missing image or a figure spec that does not parse stops the render with a message naming
@@ -103,7 +115,7 @@ the block.
 
 The full syntax of every figure block, with each one drawn beside its source, is the reference sheet
 [examples/apollo/apollo.md](examples/apollo/apollo.md) ([PDF](examples/apollo/apollo.pdf)). The summaries below
-cover the first three and the scatter syntax; section A.8 of the reference sheet is a table for choosing a figure.
+cover the first three and the scatter syntax; section A.9 of the reference sheet is a table for choosing a figure.
 
 Inline: `**bold**`, `*italic*`, `_underline_`, `` `code` ``, `H~2~O`, `10^6^`, ` -- ` for an en dash. Links
 keep their words and drop the URL.
@@ -117,12 +129,14 @@ edge FROM TO ["LABEL"] [dash] [both]
 edge FROM TO ["LABEL"] bend=R             # a curve: R > 0 bows right of the way it runs, < 0 left
 edge FROM TO ["LABEL"] ends=1:N           # lettering at each end: ER cardinality, 1:1 1:N N:M
 loop ID ["LABEL"] [top|bottom]            # an edge from a node back to itself
+lane "LABEL" ROW [ROWS]                   # a swimlane across that row, its owner at the left
 fence "LABEL" ID ID ...                   # dashed boundary round a subsystem
 note COL ROW "TEXT"                       # small free lettering
 ```
 
 Edges route orthogonally round the other boxes: straight, one elbow either way, or a Z through the gap between
-rows or columns. A `diamond` is a decision; `bend=R` is for back-edges and cycles. `\n` breaks a label.
+rows or columns. A `diamond` is a decision; `bend=R` is for back-edges and cycles, scaled up for close nodes.
+`\n` breaks a label, and long labels on short edges wrap.
 
 ### timeline
 
@@ -131,6 +145,8 @@ axis "LABEL" START END [ticks=STEP]
 bar "ROW" START END [hatch|open|solid] ["NOTE"]
 mark AT "LABEL" [dash]
 call ROW AT "TEXT"                        # leader from a bar to lettering below the axis
+milestone "ROW" AT ["LABEL"]              # a diamond: a date with no length
+after "ROW A" "ROW B"                     # an arrow from A's end to B's start: a dependency
 ```
 
 ### plot
@@ -138,7 +154,8 @@ call ROW AT "TEXT"                        # leader from a bar to lettering below
 ```
 csv data.csv                              # relative to the sheet
 x COLUMN ["LABEL"]
-y COLUMN ["LABEL"] [dots|step|area] [every=N]   # one per line, labelled at its right end; area stacks bands
+y COLUMN ["LABEL"] [dots|step|area] [every=N] [err=COLUMN]   # one per line, labelled at its right end;
+                                          # area stacks bands, err= draws error bars
 percent                                   # the area bands as shares of their sum
 range LO HI                               # x range for fn curves
 fn "EXPR" ["LABEL"]                       # an expression in x, drawn exactly: arithmetic and numpy functions
@@ -180,5 +197,8 @@ git clone https://github.com/hed0rah/apollo-sheets ~/.claude/skills/apollo-sheet
 
 The look is an homage to the Apollo Operations Handbooks (public domain, NASA). This project is not affiliated
 with or endorsed by NASA.
+
+The map data in [examples/apollo/data](examples/apollo/data) is derived from [Natural Earth](https://www.naturalearthdata.com)
+(public domain) by `make_geo.py`.
 
 MIT license.

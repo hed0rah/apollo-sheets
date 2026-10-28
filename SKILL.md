@@ -1,6 +1,6 @@
 ---
 name: apollo-sheets
-description: Render a Markdown report as a print-ready PDF review sheet in the style of the Apollo Operations Handbook (numbered paragraphs, ruled tables, cautions, checklists, change bars, line-art block diagrams and graphs, timelines, plots, memory maps, bit fields, bar charts, matrices, trees and labelled pictures). Use when the user asks for an Apollo sheet, a handbook-style or NASA-style report, or a printable review sheet of a report, design or procedure.
+description: Render a Markdown report as a print-ready PDF review sheet in the style of the Apollo Operations Handbook (numbered paragraphs, ruled tables, cautions, checklists, change bars, line-art block diagrams and graphs, timelines, plots, maps, memory maps, bit fields, bar charts, matrices, trees, labelled pictures and many more figures drawn from text). Use when the user asks for an Apollo sheet, a handbook-style or NASA-style report, or a printable review sheet of a report, design or procedure.
 ---
 
 # apollo-sheets
@@ -20,9 +20,13 @@ description: Render a Markdown report as a print-ready PDF review sheet in the s
    map, `:::bits` for register or packet fields, `:::bars` for categories, `:::matrix` for a feature comparison,
    `:::tree` for a hierarchy, `:::callouts` to name the parts of a picture, `:::scatter` (`point X Y "LABEL"`,
    `fit`) for two quantities, `:::dist` for a spread, `:::sankey` for flows, `:::treemap` for nested shares,
-   `:::quadrant`, `:::venn` and `:::funnel`, `:::equations` and `:::symbols` for derivations. Options worth
-   knowing: `area` and `percent` on a plot, `percent` on bars, `shade` on a matrix for a heatmap, `ends=1:N` on
-   a diagram edge. Section A.8 of the reference sheet is a table for choosing a figure. A block that holds
+   `:::quadrant`, `:::venn` and `:::funnel`, `:::map` for places, routes and choropleths, `:::contour`,
+   `:::raster` and `:::polar` for fields and directions, `:::waterfall`, `:::waffle`, `:::slope`, `:::parallel`
+   and `:::network`, `:::equations` and `:::symbols` for derivations. Options worth knowing: `area`, `percent`
+   and `err=` on a plot, `percent` and `dots` on bars, `strip` and `ecdf` on a dist, `shade` on a matrix for a
+   heatmap, `ends=1:N` and `lane` on a diagram, `milestone` and `after` on a timeline, a `::::row` of three or
+   more for small multiples, `[[spark 3 5 4 8]]` inline. `CATALOG.md` picks a figure by the job it does, and
+   section A.9 of the reference sheet is a table for choosing one. A block that holds
    blocks takes four colons (`::::changed` around `:::equations`).
 3. Render with page PNGs and look at every page:
 
