@@ -2,7 +2,7 @@
 dashed fences round subsystems, drums for storage, filled arrowheads. Everything returns SVG text with live fonts
 (svg.fonttype none), so the browser sets the lettering in the same faces as the sheet.
 
-  diagram(spec)    functional block diagram from text lines (see sheet.py's docstring for the syntax)
+  diagram(spec)    block diagrams and graphs from text lines (syntax in diagram's own docstring, as for each below)
   timeline(spec)   rows of bars on one time axis, with vertical markers
   plot(spec, base) CSV series and exact functions, labelled at their ends instead of a legend
   budget(spec)     used-of-capacity gauges (memory, power, link budgets)
@@ -14,10 +14,19 @@ dashed fences round subsystems, drums for storage, filled arrowheads. Everything
   matrix(spec)     a feature or permission matrix of full, half and open dots, or dots sized by value
   tree(spec)       a hierarchy from an indented outline
   callouts(spec)   leaders from points on a picture to lettering in its margins
+  scatter(spec)    points and bubbles, with a least-squares line if asked
+  dist(spec)       distributions: box, violin, histogram
+  sankey(spec)     flows between stages, ribbons as wide as their values
+  treemap(spec)    nested shares as rectangles, from an indented outline
+  quadrant(spec)   a 2 by 2 on two axes, quadrants named, points placed
+  venn(spec)       two or three overlapping sets, regions lettered
+  funnel(spec)     stages narrowing, each with its share of the first
   svg(fig)         any matplotlib figure, styled with STYLE, as SVG text
 """
+import ast
 import csv
 import io
+import re
 import shlex
 from pathlib import Path
 
@@ -57,7 +66,10 @@ def _lines(spec):
     for raw in spec.splitlines():
         raw = raw.strip()
         if raw and not raw.startswith("#"):
-            yield shlex.split(raw)
+            try:
+                yield shlex.split(raw)
+            except ValueError as e:
+                raise SystemExit(f"handbook: cannot read {raw!r} ({e}); quote any label with an apostrophe in it")
 
 
 # -- block diagram ---------------------------------------------------------------------------------------------------
@@ -121,6 +133,7 @@ def diagram(spec):
        edge FROM TO ["LABEL"] bend=R            (a curve instead, bowed by R: + bows to the right of the way it
                                                  runs, - to the left; for back-edges and cycles through a graph)
        loop ID ["LABEL"] [top|bottom]           (an edge from a node back to itself)
+       edge FROM TO ... ends=1:N                (lettering at each end: cardinality for an ER model, 1:1 1:N N:M)
        fence "LABEL" ID ID ...
        note COL ROW "TEXT"                      (small free lettering)
        grid DX DY                               (inches between columns and rows; default 1.55 0.78)"""
@@ -138,10 +151,11 @@ def diagram(spec):
                                   w=float(opts.get("w", 0)) * DX - (DX - BW) if "w" in opts else BW,
                                   h=float(opts.get("h", 0)) * DY - (DY - BH) if "h" in opts else BH)
         elif kind == "edge":
-            label = next((o for o in rest[2:] if o not in ("dash", "both") and not o.startswith("bend=")), "")
+            label = next((o for o in rest[2:] if o not in ("dash", "both") and "=" not in o), "")
+            ends = next((o[5:].split(":") for o in rest[2:] if o.startswith("ends=")), None)
             bend = next((float(o[5:]) for o in rest[2:] if o.startswith("bend=")), None)
             edges.append(dict(a=rest[0], b=rest[1], label=caps(label), dash="dash" in rest[2:], both="both" in rest[2:],
-                              bend=bend))
+                              bend=bend, ends=ends))
         elif kind == "loop":
             loops.append((rest[0], caps(next((o for o in rest[1:] if o not in ("top", "bottom")), "")),
                           "bottom" in rest[1:]))
@@ -179,6 +193,12 @@ def diagram(spec):
             style = "<|-|>" if e["both"] else "-|>"
             ax.annotate("", xy=pts[-1], xytext=pts[-2], arrowprops=dict(arrowstyle=style, color=INK, lw=0.8, ls=ls,
                                                                          mutation_scale=7, shrinkA=0, shrinkB=0))
+            for (px, py), (qx, qy), mark in ((pts[0], pts[1], e["ends"] and e["ends"][0]),
+                                             (pts[-1], pts[-2], e["ends"] and e["ends"][1])):
+                if mark:                             # beside the line, a little way out from the box
+                    dx, dy = np.sign(qx - px), np.sign(qy - py)
+                    ax.text(px + dx * 0.1 + (0 if dx else 0.06), py + dy * 0.1 + (0.05 if dx else 0), mark,
+                            fontsize=5.6, ha="center" if dx else "left", va="bottom" if dx else "center")
             if e["label"]:
                 seg = max(zip(pts[:-1], pts[1:]), key=lambda s: abs(s[1][0] - s[0][0]) + abs(s[1][1] - s[0][1]))
                 mx, my = (seg[0][0] + seg[1][0]) / 2, (seg[0][1] + seg[1][1]) / 2
@@ -292,11 +312,36 @@ FN = {k: getattr(np, k) for k in ("sin", "cos", "tan", "arctan", "exp", "log", "
                                   "sign", "pi", "e", "hypot", "arctan2", "sinc", "degrees", "radians")}
 
 
+class _Floats(ast.NodeTransformer):
+    """integer constants to floats, so 10**10**10 overflows at once instead of building a vast integer"""
+    def visit_Constant(self, node):
+        return ast.copy_location(ast.Constant(float(node.value)), node) if type(node.value) is int else node
+
+
+def _fn(src, xs):
+    """y for a fn line: arithmetic on x, numbers and the FN names only; nothing else is evaluated"""
+    tree = ast.parse(src, mode="eval")
+    allowed = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Compare, ast.Call, ast.Name, ast.Load, ast.Constant,
+               ast.operator, ast.unaryop, ast.cmpop)
+    for node in ast.walk(tree):
+        bad = (not isinstance(node, allowed)
+               or isinstance(node, ast.Name) and node.id != "x" and node.id not in FN
+               or isinstance(node, ast.Call) and (not isinstance(node.func, ast.Name) or node.keywords)
+               or isinstance(node, ast.Constant) and type(node.value) not in (int, float))
+        if bad:
+            raise SystemExit(f"handbook: fn {src!r}: only x, numbers, + - * / ** < > and {' '.join(sorted(FN))}")
+    code = compile(ast.fix_missing_locations(_Floats().visit(tree)), "<fn>", "eval")
+    with np.errstate(all="ignore"):
+        return np.broadcast_to(np.asarray(eval(code, {"__builtins__": {}}, {**FN, "x": xs}), dtype=float), xs.shape)
+
+
 def plot(spec, base=Path(".")):
     """csv PATH                         (relative to the sheet)
        x COLUMN ["LABEL"]
-       y COLUMN ["LABEL"] [dots|step] [every=N]   (a series; dots for measured points, step for a staircase;
+       y COLUMN ["LABEL"] [dots|step|area] [every=N]   (a series; dots for measured points, step for a staircase,
+                                        area to stack it as a hatched band on the area series before it;
                                         every=N keeps every Nth row, so dense dots stay dots)
+       percent                          (the panel's area series as shares of their sum, 0 to 100)
        fn "EXPR" ["LABEL"] [dots|step]  (an exact curve y(x) in numpy terms: sin exp sqrt log10 pi where ...)
        range LO HI [N]                  (x for fn curves; default the csv's x, else 0..1; N points, default 400)
        xlabel "LABEL" / ylabel "LABEL"
@@ -310,18 +355,18 @@ def plot(spec, base=Path(".")):
        size wide | size W H             (inches; default 3.4 x 2.2, wide 6.4 x 2.4; a panel more adds 0.6 of H)
      every series is labelled at its right end, so there is no legend to look up"""
     cols, marks = {}, []
-    panels = [dict(series=[], hlines=[], ylabel="", ylim=None, logy=False)]
+    panels = [dict(series=[], hlines=[], ylabel="", ylim=None, logy=False, percent=False)]
     xcol, xlabel, logx, rng, xlim, size = None, "", False, None, None, (3.4, 2.2)
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
         cur = panels[-1]
-        flags = [o for o in rest[1:] if o in ("dots", "step") or o.startswith("every=")]
+        flags = [o for o in rest[1:] if o in ("dots", "step", "area") or o.startswith("every=")]
         words = [o for o in rest[1:] if o not in flags]
         if kind == "csv":
             with open(base / rest[0], newline="") as fh:
                 for row in csv.DictReader(fh):
                     for k, v in row.items():
-                        cols.setdefault(k, []).append(float(v))
+                        cols.setdefault(k, []).append(v)        # to numbers when used, so text columns are fine
         elif kind == "x":
             xcol, xlabel = rest[0], caps(rest[1] if len(rest) > 1 else rest[0])
         elif kind in ("y", "fn"):
@@ -345,25 +390,43 @@ def plot(spec, base=Path(".")):
         elif kind == "hline":
             cur["hlines"].append((float(rest[0]), caps(rest[1]) if len(rest) > 1 else ""))
         elif kind == "panel":
-            panels.append(dict(series=[], hlines=[], ylabel="", ylim=None, logy=False))
+            panels.append(dict(series=[], hlines=[], ylabel="", ylim=None, logy=False, percent=False))
+        elif kind == "percent":
+            cur["percent"] = True
         elif kind == "size":
             size = (6.4, 2.4) if rest[0] == "wide" else (float(rest[0]), float(rest[1]))
     if rng:
         lo, hi, n = rng
         xs = np.geomspace(lo, hi, n) if logx else np.linspace(lo, hi, n)
     else:
-        xs = np.asarray(cols[xcol]) if xcol else np.linspace(0, 1, 400)
+        xs = np.asarray(cols[xcol], dtype=float) if xcol else np.linspace(0, 1, 400)
     with plt.rc_context(STYLE):
         fig, axes = plt.subplots(len(panels), 1, sharex=True, squeeze=False,
                                  figsize=(size[0], size[1] * (1 + 0.6 * (len(panels) - 1))))
         for pi_, (ax, pnl) in enumerate(zip(axes[:, 0], panels)):
-            for i, (kind, src, label, flags) in enumerate(pnl["series"]):
+            data = []
+            for kind, src, label, flags in pnl["series"]:
                 if kind == "y":
                     k = next((int(f[6:]) for f in flags if f.startswith("every=")), 1)
-                    x, y = np.asarray(cols[xcol])[::k], np.asarray(cols[src])[::k]
+                    data.append((np.asarray(cols[xcol], dtype=float)[::k], np.asarray(cols[src], dtype=float)[::k]))
                 else:
-                    x = xs
-                    y = np.broadcast_to(eval(src, {"__builtins__": {}}, {**FN, "x": xs}), xs.shape)
+                    data.append((xs, _fn(src, xs)))
+            areas = [d for d, (_, _, _, f) in zip(data, pnl["series"]) if "area" in f]
+            whole = sum(y for _, y in areas) if pnl["percent"] and areas else None
+            under, band = None, 0
+            for i, ((kind, src, label, flags), (x, y)) in enumerate(zip(pnl["series"], data)):
+                if "area" in flags:
+                    y = 100 * y / whole if whole is not None else y
+                    lo = under if under is not None else np.zeros_like(y)
+                    hi = lo + y
+                    ax.fill_between(x, lo, hi, facecolor="white", edgecolor=INK, linewidth=0.6,
+                                    hatch=["//////", "", "xxxx", "....", "\\\\\\"][band % 5])
+                    band += 1
+                    under = hi
+                    if label:
+                        ax.annotate(label, xy=(x[-1], (lo[-1] + hi[-1]) / 2), xytext=(4, 0),
+                                    textcoords="offset points", fontsize=5.6, va="center", annotation_clip=False)
+                    continue
                 if "dots" in flags:
                     ax.plot(x, y, ls="none", marker="o", ms=2.6, mfc="white", mec=INK, mew=0.7)
                 else:
@@ -382,7 +445,7 @@ def plot(spec, base=Path(".")):
                 ends = [(l.get_ydata()[0], l.get_ydata()[-1]) for l in ax.get_lines() if len(l.get_ydata()) > 1]
                 left = sum(abs(a - at) for a, _ in ends) > sum(abs(b - at) for _, b in ends)
                 ax.text(0.01 if left else 0.99, at, label, fontsize=5.4, ha="left" if left else "right", va="bottom",
-                        transform=ax.get_yaxis_transform())
+                        transform=ax.get_yaxis_transform(), bbox=dict(fc="white", ec="none", pad=0.4))
             if logx:
                 ax.set_xscale("log")
             if pnl["logy"]:
@@ -405,6 +468,11 @@ def _num(v):
     return f"{v:,.0f}".replace(",", " ") if float(v).is_integer() else f"{v:,g}".replace(",", " ")
 
 
+def _value(v):
+    """a number, hex (0x8DFBC, 0X10) read as hex"""
+    return float(int(v, 16)) if v.lower().startswith("0x") else float(v)
+
+
 def budget(spec):
     """bar "LABEL" USED CAPACITY ["UNIT"]  (one gauge a line: the used part hatched, headroom open, figures at the end;
                                           numbers may be hex, 0x8DFBC)
@@ -413,8 +481,9 @@ def budget(spec):
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
         if kind == "bar":
-            bars.append((caps(rest[0]), float(int(rest[1], 0)) if rest[1].startswith("0x") else float(rest[1]),
-                         float(int(rest[2], 0)) if rest[2].startswith("0x") else float(rest[2]),
+            if _value(rest[2]) <= 0:
+                raise SystemExit(f"handbook: budget {rest[0]!r} has no capacity")
+            bars.append((caps(rest[0]), _value(rest[1]), _value(rest[2]),
                          rest[3] if len(rest) > 3 else ""))
         elif kind == "mark":
             marks.append((float(rest[0]), caps(rest[1])))
@@ -459,7 +528,7 @@ def sequence(spec):
     with plt.rc_context(STYLE):
         fig = plt.figure(figsize=((len(actors) - 1) * dx + 1.6, (n + 1.6) * dy))
         ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
-        ax.set_xlim(-0.8, (len(actors) - 1) * dx + 0.8); ax.set_ylim(-(n + 0.8) * dy, 0.8 * dy)
+        ax.set_xlim(-0.8, (len(actors) - 1) * dx + 0.8); ax.set_ylim(-(n + 0.8) * dy, 0.05 + 0.336 + 0.06)
         gaps = [k for k, s in enumerate(steps) if s[0] == "gap"]
         for k, (i, label) in actors.items():
             x = X[k]
@@ -492,7 +561,8 @@ def sequence(spec):
                 ax.annotate("", xy=(X[b], y - 0.06), xytext=(X[a], y - 0.06),
                             arrowprops=dict(arrowstyle="-|>", color=INK, lw=0.7, ls=(0, (4, 2.5)) if dash else "-",
                                             mutation_scale=7, shrinkA=0, shrinkB=0))
-                ax.text((X[a] + X[b]) / 2, y - 0.03, label, ha="center", va="bottom", fontsize=5.2)
+                ax.text((X[a] + X[b]) / 2, y - 0.03, label, ha="center", va="bottom", fontsize=5.2,
+                        bbox=dict(fc="white", ec="none", pad=0.3))       # over any lifeline it crosses
         return svg(fig)
 
 
@@ -520,8 +590,13 @@ def signals(spec):
             base = -r * 0.9
             runs = []                                      # [state, start, end, label]
             last = "x"
+            bad = set(wave) - set(half)
+            if bad:
+                raise SystemExit(f"handbook: signal {name!r}: unknown wave characters {''.join(sorted(bad))!r}")
             for k, ch in enumerate("".join(half[c] for c in wave)):
                 t = k / 2
+                if ch == "." and not runs:               # nothing to hold yet: unknown
+                    ch = "x"
                 if ch == "." or (ch == last and ch != "=" and runs):
                     runs[-1][2] = t + 0.5
                     continue
@@ -609,7 +684,7 @@ def stack(spec):
                 ax.text(width / 2, ym, l["label"], fontsize=6.4, **txt)
             if l["at"]:
                 ax.plot([-0.08, 0], [y1, y1], color=INK, lw=0.6)
-                ax.text(-0.12, y1, l["at"].upper(), fontsize=5.4, ha="right", va="center")
+                ax.text(-0.12, y1, l["at"], fontsize=5.4, ha="right", va="center")       # 0x stays lower case
         for a, b, label in spans:
             y1, y0 = top[a] - 0.03, top[b + 1] + 0.03
             x = width + 0.12
@@ -671,10 +746,11 @@ def bars(spec):
        bar "CATEGORY" V [V ...]      (one line a category, in order)
        unit "LABEL"                  (the value axis)
        stacked                       (stack the series instead of setting them side by side)
+       percent                       (stack each category as shares of its own total, 0 to 100)
        horizontal                    (categories down the left, values across: for long names)
        log                           (a log value axis)
        size W H                      (inches; default 3.4 by 2.2)"""
-    series, cats, unit, stacked, horiz, log, size = [], [], "", False, False, False, (3.4, 2.2)
+    series, cats, unit, stacked, horiz, log, size, percent = [], [], "", False, False, False, (3.4, 2.2), False
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
         if kind == "series":
@@ -685,12 +761,16 @@ def bars(spec):
             unit = caps(rest[0])
         elif kind == "stacked":
             stacked = True
+        elif kind == "percent":
+            stacked = percent = True
         elif kind == "horizontal":
             horiz = True
         elif kind == "log":
             log = True
         elif kind == "size":
             size = (float(rest[0]), float(rest[1]))
+    if percent:
+        cats = [(c, [100 * v / (sum(vals) or 1) for v in vals]) for c, vals in cats]
     ns = max(len(v) for _, v in cats)
     fills = [("white", "//////"), ("white", None), (INK, None), ("white", "xxxx"), ("white", "....")]
     with plt.rc_context(STYLE):
@@ -708,8 +788,13 @@ def bars(spec):
                     ax.bar(pos, v, width, bottom=base, **kw)
                 if not stacked:
                     _endlabel(ax, f"{v:g}", v, -pos if horiz else pos, horiz)
+                elif percent and v >= 8:             # a share lettered inside its own segment
+                    xy = (base + v / 2, -pos) if horiz else (pos, base + v / 2)
+                    ax.text(*xy, f"{v:.0f} %", fontsize=5.2, ha="center", va="center",
+                            color="white" if fc == INK else INK,
+                            bbox=None if not hatch else dict(fc="white", ec="none", pad=0.5))
                 base += v if stacked else 0
-            if stacked:
+            if stacked and not percent:
                 _endlabel(ax, f"{base:g}", base, -i if horiz else i, horiz)
         names = [c for c, _ in cats]
         if horiz:
@@ -750,8 +835,9 @@ def matrix(spec):
     """cols "A" "B" ...              (column heads, set slanted)
        row "NAME" V V ...            (one cell a column: yes, part, no, - for not applicable, a number, or short text)
        scale MAX                     (numbers are dots whose area is V / MAX of a full cell; default the largest)
+       shade                         (numbers as a heatmap instead: each cell tinted by V / MAX, its value lettered)
      yes, part and no print as a full, half and open dot, the handbook's way of comparing at a glance"""
-    cols, rows, scale = [], [], None
+    cols, rows, scale, shade = [], [], None, False
     for t in _lines(spec):
         kind, rest = t[0], t[1:]
         if kind == "cols":
@@ -760,8 +846,10 @@ def matrix(spec):
             rows.append((caps(rest[0]), rest[1:]))
         elif kind == "scale":
             scale = float(rest[0])
+        elif kind == "shade":
+            shade = True
     nums = [float(v) for _, vs in rows for v in vs if _isnum(v)]
-    scale = scale or (max(nums) if nums else 1)
+    scale = scale or (max(nums) if nums else 1) or 1
     cw, rh, left = 0.42, 0.24, 1.6
     with plt.rc_context(STYLE):
         fig = plt.figure(figsize=(left + cw * len(cols) + 0.3, rh * len(rows) + 0.75))
@@ -785,6 +873,12 @@ def matrix(spec):
                     ax.add_patch(matplotlib.patches.Wedge((xc, yc), r, 90, 270, fc=INK, ec=INK, lw=0.7))
                 elif lv == "-":
                     ax.plot([xc - r * 0.6, xc + r * 0.6], [yc, yc], color=INK, lw=0.7)
+                elif _isnum(v) and shade:
+                    f = min(float(v) / scale, 1)
+                    ax.add_patch(Rectangle((j * cw + 0.01, -(i + 1) * rh + 0.01), cw - 0.02, rh - 0.02,
+                                           fc=str(1 - 0.85 * f), ec="none"))
+                    ax.text(xc, yc, f"{float(v):g}" if float(v) else "", fontsize=5.4, ha="center", va="center",
+                            color="white" if f > 0.55 else INK)
                 elif _isnum(v):
                     ax.add_patch(Circle((xc, yc), rh * 0.42 * (float(v) / scale) ** 0.5, fc=INK, ec=INK, lw=0.5))
                 else:
@@ -925,4 +1019,410 @@ def callouts(spec, base=Path(".")):
                 ax.add_patch(Circle((px, py), 0.025, fc=INK, ec="white", lw=0.5))
                 ax.text(tx + (-0.04 if side == "l" else 0.04), y, text, fontsize=5.6, va="center",
                         ha="right" if side == "l" else "left", linespacing=1.05)
+        return svg(fig)
+
+
+# -- scatter and bubbles ---------------------------------------------------------------------------------------------
+
+def scatter(spec, base=Path(".")):
+    """point X Y ["LABEL"] [size=N]   (one point a line; size= makes it a bubble, area by value)
+       csv PATH X Y [size=COL] [label=COL]   (points from columns of a CSV instead)
+       xlabel "LABEL" / ylabel "LABEL"
+       log x|y|xy
+       fit                            (a least-squares line, with r, on the axes as drawn: log axes fit the logs)
+       size W H                       (inches; default 3.4 by 2.4)"""
+    pts, xlabel, ylabel, log, fit, size = [], "", "", "", False, (3.4, 2.4)
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        opts = dict(o.split("=", 1) for o in rest if "=" in o)
+        rest = [r for r in rest if "=" not in r]
+        if kind == "point":
+            pts.append((float(rest[0]), float(rest[1]), float(opts["size"]) if "size" in opts else None,
+                        caps(rest[2]) if len(rest) > 2 else ""))
+        elif kind == "csv":
+            with open(base / rest[0], newline="") as fh:
+                for row in csv.DictReader(fh):
+                    pts.append((float(row[rest[1]]), float(row[rest[2]]),
+                                float(row[opts["size"]]) if "size" in opts else None,
+                                caps(row[opts["label"]]) if "label" in opts else ""))
+        elif kind == "xlabel":
+            xlabel = caps(rest[0])
+        elif kind == "ylabel":
+            ylabel = caps(rest[0])
+        elif kind == "log":
+            log = rest[0]
+        elif kind == "fit":
+            fit = True
+        elif kind == "size":
+            size = (float(rest[0]), float(rest[1]))
+    big = max((p[2] for p in pts if p[2] is not None), default=None) or 1
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=size)
+        for x, y, s, label in pts:
+            area = 6 if s is None else 6 + 260 * s / big
+            ax.scatter([x], [y], s=area, facecolor="white" if s is None else "#cfcfcf", edgecolor=INK, linewidth=0.7,
+                       zorder=3)
+            if label:
+                ax.annotate(label, xy=(x, y), xytext=(5, 3), textcoords="offset points", fontsize=5.4, zorder=4)
+        if "x" in log:
+            ax.set_xscale("log")
+        if "y" in log:
+            ax.set_yscale("log")
+        if fit and len(pts) > 2 and len({p[0] for p in pts}) > 1:
+            fx = np.array([p[0] for p in pts]); fy = np.array([p[1] for p in pts])
+            keep = ((fx > 0) | ("x" not in log)) & ((fy > 0) | ("y" not in log))     # a log axis fits positives
+            fx, fy = fx[keep], fy[keep]
+            tx = np.log10(fx) if "x" in log else fx
+            ty = np.log10(fy) if "y" in log else fy
+            m, c = np.polyfit(tx, ty, 1)
+            r = np.corrcoef(tx, ty)[0, 1]
+            gx = np.linspace(tx.min(), tx.max(), 50)
+            gy = m * gx + c
+            ax.plot(10 ** gx if "x" in log else gx, 10 ** gy if "y" in log else gy, color=INK, lw=0.7,
+                    ls=(0, (5, 2)), zorder=2)
+            ax.text(0.03, 0.95, f"LEAST SQUARES, R = {r:.2f}", transform=ax.transAxes, fontsize=5.4, va="top")
+        ax.margins(0.12)
+        ax.grid(True, color=INK, lw=0.25, alpha=0.35)
+        ax.set_xlabel(xlabel, fontsize=6); ax.set_ylabel(ylabel, fontsize=6)
+        return svg(fig)
+
+
+# -- distributions ---------------------------------------------------------------------------------------------------
+
+def dist(spec, base=Path(".")):
+    """box "NAME" MIN Q1 MEDIAN Q3 MAX [OUTLIER ...]   (a box from its five numbers)
+       data "NAME" PATH COLUMN [where=COL:VALUE]      (a box from raw values in a CSV: quartiles, whiskers to 1.5 IQR,
+                                                       the rest as outliers)
+       violin                                          (raw rows drawn as violins round their boxes)
+       hist PATH COLUMN [where=COL:VALUE] [bins=N]    (a histogram instead of boxes; one only)
+       mark AT "LABEL"                                 (a dashed line across, a limit or a percentile)
+       unit "LABEL"
+       size W H                                        (inches; default 3.4 by 2.2)"""
+    boxes, raw, marks, unit, violin, hist, size = [], [], [], "", False, None, (3.4, 2.2)
+
+    def column(path, col, opts):
+        where = opts.get("where")
+        key, _, want = where.partition(":") if where else ("", "", "")
+        with open(base / path, newline="") as fh:
+            return [float(r[col]) for r in csv.DictReader(fh) if not where or r[key] == want]
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        opts = dict(o.split("=", 1) for o in rest if "=" in o)
+        rest = [r for r in rest if "=" not in r]
+        if kind == "box":
+            v = [float(x) for x in rest[1:]]
+            boxes.append(dict(label=caps(rest[0]), whislo=v[0], q1=v[1], med=v[2], q3=v[3], whishi=v[4], fliers=v[5:]))
+        elif kind == "data":
+            vals = np.array(column(rest[1], rest[2], opts))
+            q1, med, q3 = np.percentile(vals, [25, 50, 75])
+            lo, hi = q1 - 1.5 * (q3 - q1), q3 + 1.5 * (q3 - q1)
+            inside = vals[(vals >= lo) & (vals <= hi)]
+            boxes.append(dict(label=caps(rest[0]), whislo=inside.min(), q1=q1, med=med, q3=q3, whishi=inside.max(),
+                              fliers=vals[(vals < lo) | (vals > hi)].tolist()))
+            raw.append(vals)
+        elif kind == "violin":
+            violin = True
+        elif kind == "hist":
+            hist = (column(rest[0], rest[1], opts), int(opts.get("bins", 20)))
+        elif kind == "mark":
+            marks.append((float(rest[0]), caps(rest[1])))
+        elif kind == "unit":
+            unit = caps(rest[0])
+        elif kind == "size":
+            size = (float(rest[0]), float(rest[1]))
+    with plt.rc_context(STYLE):
+        fig, ax = plt.subplots(figsize=size)
+        if hist:
+            ax.hist(hist[0], bins=hist[1], color="white", edgecolor=INK, linewidth=0.7, hatch="//////")
+            ax.set_xlabel(unit, fontsize=6); ax.set_ylabel("COUNT", fontsize=6)
+            for at, label in marks:
+                ax.axvline(at, color=INK, lw=0.7, ls=(0, (3, 2)))
+                ax.text(at, 1.0, label, fontsize=5.4, ha="center", va="bottom", transform=ax.get_xaxis_transform())
+            ax.grid(True, axis="y", color=INK, lw=0.25, alpha=0.35)
+        else:
+            pos = list(range(len(boxes), 0, -1))
+            if violin and raw and len(raw) == len(boxes):
+                parts = ax.violinplot(raw, positions=pos, vert=False, showextrema=False, widths=0.8)
+                for b in parts["bodies"]:
+                    b.set_facecolor("#e2e2e2"); b.set_edgecolor(INK); b.set_linewidth(0.5); b.set_alpha(1)
+            ax.bxp(boxes, positions=pos, vert=False, widths=0.32 if violin else 0.5, patch_artist=True,
+                   boxprops=dict(facecolor="white", edgecolor=INK, linewidth=0.8),
+                   medianprops=dict(color=INK, linewidth=1.6), whiskerprops=dict(color=INK, linewidth=0.7),
+                   capprops=dict(color=INK, linewidth=0.7),
+                   flierprops=dict(marker="o", markersize=2.4, markerfacecolor="white", markeredgecolor=INK))
+            ax.set_yticks(pos, [b["label"] for b in boxes]); ax.tick_params(axis="y", length=0)
+            ax.set_xlabel(unit, fontsize=6)
+            for at, label in marks:
+                ax.axvline(at, color=INK, lw=0.7, ls=(0, (3, 2)))
+                ax.text(at, 1.0, label, fontsize=5.4, ha="center", va="bottom", transform=ax.get_xaxis_transform())
+            ax.grid(True, axis="x", color=INK, lw=0.25, alpha=0.35)
+            ax.spines["left"].set_visible(False)
+        ax.set_axisbelow(True)
+        return svg(fig)
+
+
+# -- sankey ----------------------------------------------------------------------------------------------------------
+
+def sankey(spec):
+    """flow "FROM" "TO" VALUE        (one line a flow; columns follow from the flows, sources at the left)
+       unit "LABEL"                   (printed after each node's total)
+       size W H                       (inches between the first and last columns; default 4.2 by 2.6)
+     ribbon width is proportional to value; a node's height is the larger of what comes in and what goes out"""
+    flows, unit, size = [], "", (4.2, 2.6)
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "flow":
+            flows.append((caps(rest[0]), caps(rest[1]), float(rest[2])))
+        elif kind == "unit":
+            unit = rest[0]
+        elif kind == "size":
+            size = (float(rest[0]), float(rest[1]))
+    flows = [f for f in flows if f[2] > 0]
+    if not flows:
+        raise SystemExit("handbook: sankey has no flows above zero")
+    names = list(dict.fromkeys([a for a, _, _ in flows] + [b for _, b, _ in flows]))
+    col = {n: 0 for n in names}
+    for _ in names:                                  # longest path from a source sets the column
+        for a, b, _ in flows:
+            col[b] = max(col[b], col[a] + 1)
+    if any(col[b] <= col[a] for a, b, _ in flows):
+        raise SystemExit("handbook: sankey flows run in a circle; a sankey must flow one way")
+    inflow = {n: sum(v for _, b, v in flows if b == n) for n in names}
+    outflow = {n: sum(v for a, _, v in flows if a == n) for n in names}
+    val = {n: max(inflow[n], outflow[n]) for n in names}
+    ncol = max(col.values()) + 1
+    W, H = size
+    gap, nw = 0.12, 0.07
+    cols = [[n for n in names if col[n] == c] for c in range(ncol)]
+    k = min((H - gap * (len(c) - 1)) / sum(val[n] for n in c) for c in cols)   # inches per unit
+    top, xs = {}, {}
+    for c, members in enumerate(cols):
+        y = H - (H - sum(val[n] * k for n in members) - gap * (len(members) - 1)) / 2
+        for n in members:
+            top[n], xs[n] = y, c * (W - nw) / max(ncol - 1, 1)
+            y -= val[n] * k + gap
+    from matplotlib.path import Path as MPath
+    out_off = {n: 0.0 for n in names}
+    in_off = {n: 0.0 for n in names}
+    order = sorted(flows, key=lambda f: (-top[f[0]], -top[f[1]]))
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(W + 2.4, H + 0.3))
+        ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
+        ax.set_xlim(-1.2, W + 1.2); ax.set_ylim(-0.15, H + 0.15)
+        for a, b, v in order:
+            h = v * k
+            y0 = top[a] - out_off[a]; out_off[a] += h
+            y1 = top[b] - in_off[b]; in_off[b] += h
+            x0, x1 = xs[a] + nw, xs[b]
+            m = (x0 + x1) / 2
+            verts = [(x0, y0), (m, y0), (m, y1), (x1, y1), (x1, y1 - h), (m, y1 - h), (m, y0 - h), (x0, y0 - h),
+                     (x0, y0)]
+            codes = [MPath.MOVETO, MPath.CURVE4, MPath.CURVE4, MPath.CURVE4, MPath.LINETO, MPath.CURVE4,
+                     MPath.CURVE4, MPath.CURVE4, MPath.CLOSEPOLY]
+            ax.add_patch(matplotlib.patches.PathPatch(MPath(verts, codes), fc="#d4d4d4", ec=INK, lw=0.35, alpha=0.9))
+        for n in names:
+            ax.add_patch(Rectangle((xs[n], top[n] - val[n] * k), nw, val[n] * k, fc=INK, ec=INK, lw=0.5))
+            left = col[n] == 0
+            ax.text(xs[n] - 0.05 if left else xs[n] + nw + 0.05, top[n] - val[n] * k / 2,
+                    f"{n}\n{val[n]:g} {unit}".rstrip(), fontsize=5.6, va="center", linespacing=1.1,
+                    ha="right" if left else "left")
+        return svg(fig)
+
+
+# -- treemap ---------------------------------------------------------------------------------------------------------
+
+def treemap(spec):
+    """an indented outline, two spaces a level; a leaf ends in its value, a parent is the sum of its children:
+         SHEETS
+           PDF 2255
+           PY 79
+       size W H                       (inches, on a line of its own; default 6.2 by 3)
+     the first level are framed heavy and named in their corner, the leaves lettered when they have room"""
+    size, items = (6.2, 3.0), []
+    for l in spec.splitlines():
+        if not l.strip() or l.strip().startswith("#"):
+            continue
+        if l.strip().startswith("size "):
+            size = tuple(float(v) for v in l.split()[1:3])
+            continue
+        depth = (len(l) - len(l.lstrip(" "))) // 2
+        m = re.fullmatch(r"(.*?)\s+(-?[\d.]+)", l.strip())     # a name, then its value if it ends in one
+        name, value = (m.group(1), float(m.group(2))) if m else (l.strip(), 0.0)
+        items.append([depth, caps(name.strip().strip('"')), value, []])
+    roots, stackp = [], []
+    for it in items:
+        while stackp and stackp[-1][0] >= it[0]:
+            stackp.pop()
+        (stackp[-1][3] if stackp else roots).append(it)
+        stackp.append(it)
+
+    def total(it):
+        return it[2] if not it[3] else sum(total(k) for k in it[3])
+
+    def prune(group):                                # nothing of size 0 takes up room
+        for it in group:
+            it[3] = prune(it[3])
+        return [it for it in group if total(it) > 0]
+    roots = prune(roots)
+    if not roots:
+        raise SystemExit("handbook: treemap has nothing above zero")
+
+    def squarify(group, x, y, w, h):
+        """lay a list of items into a rectangle by rows of near-square cells"""
+        group = sorted(group, key=total, reverse=True)
+        out, scale = [], w * h / sum(total(g) for g in group)
+        while group:
+            short = min(w, h)
+            row, best = [], float("inf")
+            for g in group:
+                trial = row + [g]
+                s = sum(total(t) for t in trial) * scale
+                worst = max(max(short ** 2 * total(t) * scale / s ** 2, s ** 2 / (short ** 2 * total(t) * scale))
+                            for t in trial)
+                if worst > best:
+                    break
+                row, best = trial, worst
+            group = group[len(row):]
+            s = sum(total(t) for t in row) * scale
+            if w >= h:                                # the row stands as a column at the left
+                cw, cy = s / h, y
+                for t in row:
+                    ch = total(t) * scale / cw
+                    out.append((t, x, cy, cw, ch)); cy += ch
+                x, w = x + cw, w - cw
+            else:
+                rh, cx = s / w, x
+                for t in row:
+                    c = total(t) * scale / rh
+                    out.append((t, cx, y, c, rh)); cx += c
+                y, h = y + rh, h - rh
+        return out
+    W, H = size
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(W + 0.1, H + 0.1))
+        ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
+        ax.set_xlim(-0.05, W + 0.05); ax.set_ylim(H + 0.05, -0.05)        # y runs down, as the eye reads
+
+        def draw(group, x, y, w, h, depth):
+            for it, cx, cy, cw, ch in squarify(group, x, y, w, h):
+                pad = 0.03 if depth else 0.0
+                ax.add_patch(Rectangle((cx + pad, cy + pad), cw - 2 * pad, ch - 2 * pad, fill=False, ec=INK,
+                                       lw=1.4 if depth == 0 else 0.6))
+                if it[3]:
+                    head = f"{it[1]}  {total(it):g}"
+                    if cw < len(head) * 0.055:              # a narrow group keeps its name, drops its total
+                        head = it[1] if cw >= len(it[1]) * 0.055 else ""
+                    ax.text(cx + 0.05, cy + 0.04, head, fontsize=5.8, va="top", ha="left", fontweight="bold")
+                    draw(it[3], cx + 0.03, cy + 0.17, cw - 0.06, ch - 0.2, depth + 1)
+                elif cw > 0.32 and ch > 0.16:
+                    ax.text(cx + cw / 2, cy + ch / 2, f"{it[1]}\n{total(it):g}", fontsize=5.2 if cw > 0.5 else 4.4,
+                            ha="center", va="center", linespacing=1.05)
+        draw(roots, 0, 0, W, H, 0)
+        return svg(fig)
+
+
+# -- quadrant --------------------------------------------------------------------------------------------------------
+
+def quadrant(spec):
+    """x "LOW" "HIGH"                  (the axis, its two ends lettered)
+       y "LOW" "HIGH"
+       name 1|2|3|4 "TEXT"             (a quadrant's name: 1 top right, 2 top left, 3 bottom left, 4 bottom right)
+       point X Y "LABEL"               (X and Y from 0 to 1)"""
+    xl, yl, names, pts = ("", ""), ("", ""), {}, []
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "x":
+            xl = (caps(rest[0]), caps(rest[1]))
+        elif kind == "y":
+            yl = (caps(rest[0]), caps(rest[1]))
+        elif kind == "name":
+            names[int(rest[0])] = caps(rest[1])
+        elif kind == "point":
+            pts.append((float(rest[0]), float(rest[1]), caps(rest[2])))
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(3.6, 3.2))
+        ax = fig.add_axes([0.1, 0.08, 0.85, 0.88]); ax.set_axis_off()
+        ax.set_xlim(-0.02, 1.02); ax.set_ylim(-0.02, 1.02)
+        ax.add_patch(Rectangle((0, 0), 1, 1, fill=False, ec=INK, lw=1.0))
+        ax.plot([0.5, 0.5], [0, 1], color=INK, lw=0.6); ax.plot([0, 1], [0.5, 0.5], color=INK, lw=0.6)
+        for q, (x, y, ha) in {1: (0.97, 0.97, "right"), 2: (0.03, 0.97, "left"), 3: (0.03, 0.03, "left"),
+                              4: (0.97, 0.03, "right")}.items():
+            if q in names:
+                ax.text(x, y, names[q], fontsize=6.2, fontweight="bold", ha=ha, va="top" if y > 0.5 else "bottom")
+        for x, y, label in pts:
+            ax.plot([x], [y], marker="o", ms=3.2, mfc=INK, mec=INK)
+            right = x > 0.7                          # lettering to the left near the right edge
+            ax.annotate(label, xy=(x, y), xytext=(-4 if right else 4, 2), textcoords="offset points", fontsize=5.4,
+                        ha="right" if right else "left")
+        ax.text(0, -0.03, xl[0], fontsize=5.6, ha="left", va="top"); ax.text(1, -0.03, xl[1], fontsize=5.6, ha="right", va="top")
+        ax.text(-0.03, 0, yl[0], fontsize=5.6, ha="right", va="bottom", rotation=90)
+        ax.text(-0.03, 1, yl[1], fontsize=5.6, ha="right", va="top", rotation=90)
+        return svg(fig)
+
+
+# -- venn ------------------------------------------------------------------------------------------------------------
+
+def venn(spec):
+    """set "A" "B" ["C"]               (two or three sets, named)
+       in REGION "TEXT"                (REGION: A, B, C, AB, AC, BC, ABC, or out for none of them)"""
+    sets, regions = [], {}
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "set":
+            sets = [caps(s) for s in rest]
+        elif kind == "in":
+            key = rest[0].upper()
+            regions[key if key == "OUT" else "".join(sorted(key))] = caps(rest[1])     # BA is AB
+    three = len(sets) == 3
+    r = 1.0
+    centres = [(-0.55, 0.3), (0.55, 0.3), (0, -0.62)] if three else [(-0.6, 0), (0.6, 0)]
+    spots = ({"A": (-0.95, 0.55), "B": (0.95, 0.55), "C": (0, -1.15), "AB": (0, 0.72), "AC": (-0.72, -0.4),
+              "BC": (0.72, -0.4), "ABC": (0, 0.0), "OUT": (1.65, -1.45)} if three else
+             {"A": (-1.0, 0), "B": (1.0, 0), "AB": (0, 0), "OUT": (1.75, -1.0)})
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(4.4, 3.0 if three else 2.1))
+        ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off(); ax.set_aspect("equal")
+        ax.set_xlim(-2.9, 2.9); ax.set_ylim(-1.75, 1.6) if three else ax.set_ylim(-1.25, 1.35)
+        for (cx, cy), name, ls in zip(centres, sets, ["-", (0, (5, 2)), (0, (1.5, 1.5))]):
+            ax.add_patch(Circle((cx, cy), r, fill=False, ec=INK, lw=0.9, ls=ls))
+        heads = [(-1.55, 1.4, "right"), (1.55, 1.4, "left"), (-1.0, -1.55, "right")] if three else \
+                [(-1.65, 0.9, "right"), (1.65, 0.9, "left")]
+        for (hx, hy, ha), name in zip(heads, sets):           # outside the circles, clear of their lines
+            ax.text(hx, hy, name, fontsize=6.4, fontweight="bold", ha=ha, va="center")
+        for key, text in regions.items():
+            x, y = spots[key]
+            ax.text(x, y, text, fontsize=5.4, ha="center", va="center", linespacing=1.1)
+        return svg(fig)
+
+
+# -- funnel ----------------------------------------------------------------------------------------------------------
+
+def funnel(spec):
+    """stage "NAME" VALUE             (top to bottom; each printed with its share of the first stage)
+       unit "LABEL" """
+    stages, unit = [], ""
+    for t in _lines(spec):
+        kind, rest = t[0], t[1:]
+        if kind == "stage":
+            stages.append((caps(rest[0]), float(rest[1])))
+        elif kind == "unit":
+            unit = rest[0]
+    top = stages[0][1]
+    if top <= 0:
+        raise SystemExit("handbook: funnel's first stage must be above zero")
+    W, rh = 3.2, 0.34
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(W + 3.0, rh * len(stages) + 0.2))
+        ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
+        ax.set_xlim(-1.4, W + 1.6); ax.set_ylim(-rh * len(stages) - 0.05, 0.15)
+        for i, (name, v) in enumerate(stages):
+            w0 = W * v / top
+            w1 = W * stages[i + 1][1] / top if i + 1 < len(stages) else w0
+            y0, y1 = -i * rh, -(i + 1) * rh + 0.04
+            ax.add_patch(plt.Polygon([(W / 2 - w0 / 2, y0), (W / 2 + w0 / 2, y0), (W / 2 + w1 / 2, y1),
+                                      (W / 2 - w1 / 2, y1)], closed=True, fc="white", ec=INK, lw=0.8,
+                                     hatch="//////" if i % 2 else None))
+            ax.text(-0.1, (y0 + y1) / 2, name, fontsize=6, ha="right", va="center")
+            ax.text(W + 0.1, (y0 + y1) / 2, f"{v:g} {unit},  {100 * v / top:.0f} %",
+                    fontsize=5.8, ha="left", va="center")
         return svg(fig)

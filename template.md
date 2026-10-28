@@ -7,7 +7,7 @@ system: SUBJECT -- one line on what it is
 doc: XXX-1
 mission: project or build it covers
 date: MM.DD.YYYY
-by: "Review sheet for WHO, from WHOSE report. DRAFT until checked."
+by: "Review sheet by AUTHOR for READER, from SOURCE report. DRAFT until checked."
 ---
 
 <!--

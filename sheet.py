@@ -40,6 +40,13 @@ the ::: blocks below add the handbook furniture.
   :::matrix Caption                    a comparison of dots (handbook.matrix)
   :::tree Caption                      a hierarchy from an indented outline (handbook.tree)
   :::callouts Caption                  leaders from points on a picture to its margins (handbook.callouts)
+  :::scatter Caption                   points, bubbles, a fit line (handbook.scatter)
+  :::dist Caption                      box, violin or histogram (handbook.dist)
+  :::sankey Caption                    flows between stages (handbook.sankey)
+  :::treemap Caption                   nested shares (handbook.treemap)
+  :::quadrant Caption                  a named 2 by 2 (handbook.quadrant)
+  :::venn Caption                      overlapping sets (handbook.venn)
+  :::funnel Caption                    narrowing stages (handbook.funnel)
   $x$  and  $$ ... $$                  inline math; a display, numbered (2.1-1) at the right
   :::equations                         one equation a line, aligned on its relation; a line that starts with
                                        a relation continues the one above, unnumbered
@@ -53,7 +60,11 @@ the ::: blocks below add the handbook furniture.
 
   python sheet.py report.md                      writes report.pdf beside it
   python sheet.py report.md -o out.pdf --png     and page PNGs, for a look without a printer
-  python sheet.py notes.md -s section=3 -s tab=PHY -s mission=EXAMPLE-1    someone else's report, as it is
+  python sheet.py notes.md -s section=3 -s tab=PHY -s mission=EXAMPLE-1  someone else's report, as it is
+
+A block closes at the first line that is exactly its own colons, so a block that holds other blocks takes four:
+::::changed ... ::::, like ::::row. Needs Python 3.8 or later, google-chrome (SHEET_CHROME), matplotlib, numpy,
+PyYAML, and the URW base35 fonts (SHEET_FONTS; Debian and Ubuntu: fonts-urw-base35); --png needs pdftoppm.
 """
 import argparse
 import datetime
@@ -81,7 +92,8 @@ CHROME = os.environ.get("SHEET_CHROME", "google-chrome")
 # -- math and inline ---------------------------------------------------------------------------------------------------
 
 _MATH = {}
-RELATION = re.compile(r"=|<|>|\\(approx|equiv|sim|propto|leq?|geq?)(?![a-zA-Z])")
+RELATION = re.compile(r"=|<|>|\\(approx|equiv|simeq|sim|cong|propto|neq?|leq?|geq?|ll|gg|in|ni|subseteq?|"
+                      r"to|mapsto|rightarrow|Rightarrow|iff)(?![a-zA-Z])")
 
 
 def math(tex, display=False):
@@ -101,13 +113,15 @@ def math(tex, display=False):
             svg = buf.getvalue()
             svg = svg[svg.index("<svg"):].strip()
             svg = svg.replace("<svg ", f'<svg class="math" style="vertical-align:{-depth:.2f}pt" ', 1)
-            _MATH[key] = f'<span class="{"boxed" if "\\boxed" in tex else ""}">{svg}</span>'
+            cls = "boxed" if "\\boxed" in tex else ""
+            _MATH[key] = f'<span class="{cls}">{svg}</span>'
         except Exception:
             _MATH[key] = f"<code>{html.escape(tex)}</code>"
     return _MATH[key]
 
 
-def inline(s):
+def inline(s, upper=False):
+    """Markdown marks and $math$ to HTML; upper sets the words in capitals but leaves math and code alone"""
     held = []
 
     def hold(frag):
@@ -117,6 +131,8 @@ def inline(s):
     # code first, so a $ inside backticks stays a dollar sign
     s = re.sub(r"`([^`]+)`", lambda m: hold(f"<code>{html.escape(m.group(1), quote=False)}</code>"), s)
     s = re.sub(r"(?<![\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?![\w$])", lambda m: hold(math(m.group(1))), s)
+    if upper:
+        s = s.upper()
     s = html.escape(s, quote=False)
     s = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
     s = re.sub(r"(?<![\w*])\*([^*]+)\*(?![\w*])", r"<i>\1</i>", s)
@@ -170,17 +186,18 @@ class Sheet:
             else:
                 cut = next((m.start() for m in RELATION.finditer(line)
                             if line[:m.start()].count("{") == line[:m.start()].count("}")), None)
-                lhs, rhs = (line[:cut], line[cut:]) if cut else ("", line)
+                lhs, rhs = (line[:cut], line[cut:]) if cut is not None else ("", line)
+            continued = not lhs.strip() and RELATION.match(rhs.strip()) is not None   # starts with a relation
             rows.append(f'<span class="lhs">{math(lhs, True) if lhs.strip() else ""}</span>'
                         f'<span class="rhs">{math(rhs, True)}</span>'
-                        + (self.eqno() if lhs.strip() else "<span></span>"))    # a continuation takes no number
+                        + ("<span></span>" if continued else self.eqno()))     # a continuation takes no number
         return '<div class="equations">' + "".join(rows) + "</div>"
 
     def symbols(self, body):
         """SYMBOL | MEANING | UNIT, one per line, set as the handbook's "where" list"""
         rows = []
         for line in (l for l in body if l.strip()):
-            sym, mean, unit = ([c.strip() for c in line.split("|")] + ["", ""])[:3]
+            sym, mean, unit = ([c.strip() for c in _cells(line)] + ["", ""])[:3]
             rows.append(f"<tr><td>{math(sym)}</td><td>=</td><td>{inline(mean)}</td>"
                         f"<td>{inline(unit)}</td></tr>")
         return f'<div class="where"><span>where</span><table>{"".join(rows)}</table></div>'
@@ -205,6 +222,9 @@ class Sheet:
                 j = i + 1
                 while j < len(lines) and lines[j].strip() != colons:
                     j += 1
+                if j == len(lines):
+                    raise SystemExit(f"sheet: {colons}{kind} {arg} opens but never closes with a line {colons} "
+                                     "(a block that holds blocks takes four colons, ::::changed ... ::::)")
                 out.append(self.directive(kind, arg.strip(), lines[i + 1: j]))
                 i = j + 1
                 continue
@@ -219,8 +239,11 @@ class Sheet:
                 continue
             if s.startswith("<!--"):                       # guidance in a template, never printed
                 flush()
-                while "-->" not in lines[i]:
+                while i < len(lines) and "-->" not in lines[i]:
                     i += 1
+                if i < len(lines) and lines[i].split("-->", 1)[1].strip():
+                    lines[i] = lines[i].split("-->", 1)[1]     # what follows the comment on its line still prints
+                    continue
                 i += 1
                 continue
             if s.startswith("```"):
@@ -273,19 +296,21 @@ class Sheet:
         return "\n".join(out)
 
     def heading(self, level, text):
-        text = re.sub(r"^\d+(\.\d+)*\.?\s+", "", text)
+        text = re.sub(r"^(\d+\.)+\d*\s+|^\d+(\.\d+)+\s+", "", text)      # 2.1, 2.1., 3. but not a year
         if level == 1 and not self.m.get("title"):
             self.m["title"] = text
             return ""
         if level == 1:
-            return f'<h1>{inline(text.upper())}</h1>'
+            return f'<h1>{inline(text, upper=True)}</h1>'
         num = self.number(level - 2)
         if level == 2:
-            return f'<h2><span class="num">{num}</span>{inline(text.upper().rstrip("."))}.</h2>'
+            return f'<h2><span class="num">{num}</span>{inline(text.rstrip("."), upper=True)}.</h2>'
         return f'<h{level}><span class="num">{num}</span><u>{inline(text.rstrip("."))}.</u></h{level}>'
 
     def image(self, src, caption, width):
         path = (self.base / src).resolve()
+        if not path.exists():
+            raise SystemExit(f"sheet: image not found: {src}")
         if path.suffix == ".svg":
             body = path.read_text()
             body = body[body.index("<svg"):]
@@ -294,7 +319,7 @@ class Sheet:
         return self.figure(body, caption, width)
 
     def table(self, rows, caption=None):
-        cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
+        cells = [[c.strip() for c in _cells(r)] for r in rows]
         head, body = cells[0], [r for r in cells[1:] if not all(re.fullmatch(r":?-+:?", c) for c in r)]
         title = ""
         if caption is not None:
@@ -305,7 +330,17 @@ class Sheet:
         return f'<div class="table">{title}<table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
 
     def directive(self, kind, arg, body):
+        try:
+            return self._directive(kind, arg, body)
+        except (KeyError, ValueError, IndexError, ArithmeticError, TypeError, FileNotFoundError,
+                StopIteration) as e:
+            # a figure's spec is wrong: say which block and what, not a traceback
+            raise SystemExit(f"sheet: :::{kind} {arg}: {type(e).__name__}: {e}")
+
+    def _directive(self, kind, arg, body):
         text = "\n".join(body)
+        if not text.strip() and kind not in ("changed", "row"):
+            raise SystemExit(f"sheet: :::{kind} {arg} is empty")
         if kind == "table":
             rows = [l for l in body if l.strip().startswith("|")]
             return self.table(rows, arg)
@@ -314,8 +349,8 @@ class Sheet:
         if kind == "checklist":
             title, _, role = (p.strip() for p in arg.partition("|"))
             lines = "".join(f"<div>{inline(l.rstrip())}</div>" for l in body if l.strip())
-            return (f'<div class="checklist"><div class="chead"><span>{inline(title.upper())}</span>'
-                    f'<span class="role">{inline(role.upper())}</span></div><div class="cbody">{lines}</div></div>')
+            return (f'<div class="checklist"><div class="chead"><span>{inline(title, upper=True)}</span>'
+                    f'<span class="role">{inline(role, upper=True)}</span></div><div class="cbody">{lines}</div></div>')
         if kind == "changed":
             return f'<div class="changed">{self.blocks(body)}</div>'
         if kind == "row":
@@ -334,19 +369,45 @@ class Sheet:
             return self.symbols(body)
         if kind in ("diagram", "timeline", "sequence", "signals", "budget"):
             return self.figure(getattr(handbook, kind)(text), arg, "wide")
-        if kind in ("stack", "bits", "bars", "matrix", "tree"):
+        if kind in ("stack", "bits", "bars", "matrix", "tree", "sankey", "treemap", "quadrant", "venn", "funnel"):
             return self.figure(getattr(handbook, kind)(text), arg)          # drawn to print size
-        if kind == "callouts":
-            return self.figure(handbook.callouts(text, self.base), arg)
+        if kind in ("callouts", "scatter", "dist"):
+            return self.figure(getattr(handbook, kind)(text, self.base), arg)
         if kind == "plot":
             wide = re.search(r"^\s*size\s+wide\b", text, re.M)
             return self.figure(handbook.plot(text, self.base), arg, "wide" if wide else "")
         raise SystemExit(f"sheet: unknown block :::{kind}")
 
 
+def _cells(row):
+    """a pipe-table row's cells: a | inside $math$ or `code`, or written \\|, stays in its cell"""
+    row = row.strip()
+    row = row[1:] if row.startswith("|") else row
+    row = row[:-1] if row.endswith("|") and not row.endswith("\\|") else row
+    out, cur, quote = [], "", None
+    i = 0
+    while i < len(row):
+        ch = row[i]
+        if ch == "\\" and row[i + 1: i + 2] == "|":
+            cur += "|"
+            i += 2
+            continue
+        if ch in "$`":
+            quote = None if quote == ch else (quote or ch)
+        if ch == "|" and not quote:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+        i += 1
+    return out + [cur]
+
+
 def split_front(src):
     if src.startswith("---\n"):
-        end = src.index("\n---", 4)
+        end = src.find("\n---", 4)
+        if end < 0:
+            raise SystemExit("sheet: front matter opens with --- but never closes")
         return yaml.safe_load(src[4:end]) or {}, src[end + 4:].lstrip("\n")
     return {}, src
 
