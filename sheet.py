@@ -28,12 +28,18 @@ the ::: blocks below add the handbook furniture.
   :::caution / :::warning / :::note    the three call-outs
   :::checklist TITLE | ROLE            a boxed procedure in typewriter
   :::changed                           change bar in the gutter beside whatever is inside
-  :::diagram Caption                   block diagram (handbook.diagram syntax), drawn as line art
+  :::diagram Caption                   block diagram or graph: boxes, diamonds, curved back-edges, loops
   :::timeline Caption                  bars on one time axis (handbook.timeline)
   :::plot Caption                      CSV series and exact fn curves, thresholds, limits (handbook.plot)
   :::budget Caption                    used-of-capacity gauges (handbook.budget)
   :::sequence Caption                  messages between actors (handbook.sequence)
   :::signals Caption                   timing diagram: clocks, lines, buses (handbook.signals)
+  :::stack Caption                     layers, a memory map (handbook.stack)
+  :::bits Caption                      register or packet fields (handbook.bits)
+  :::bars Caption                      categorical bars, grouped or stacked (handbook.bars)
+  :::matrix Caption                    a comparison of dots (handbook.matrix)
+  :::tree Caption                      a hierarchy from an indented outline (handbook.tree)
+  :::callouts Caption                  leaders from points on a picture to its margins (handbook.callouts)
   $x$  and  $$ ... $$                  inline math; a display, numbered (2.1-1) at the right
   :::equations                         one equation a line, aligned on its relation; a line that starts with
                                        a relation continues the one above, unnumbered
@@ -328,6 +334,10 @@ class Sheet:
             return self.symbols(body)
         if kind in ("diagram", "timeline", "sequence", "signals", "budget"):
             return self.figure(getattr(handbook, kind)(text), arg, "wide")
+        if kind in ("stack", "bits", "bars", "matrix", "tree"):
+            return self.figure(getattr(handbook, kind)(text), arg)          # drawn to print size
+        if kind == "callouts":
+            return self.figure(handbook.callouts(text, self.base), arg)
         if kind == "plot":
             wide = re.search(r"^\s*size\s+wide\b", text, re.M)
             return self.figure(handbook.plot(text, self.base), arg, "wide" if wide else "")

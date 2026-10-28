@@ -69,7 +69,9 @@ bar "RAM" 100 128 KB
 bar "FLASH" 300 512 KB
 :::
 
-<!-- also: :::timeline, :::sequence, :::signals, images with {width=half|third gray=1}, ::::row with ||| -->
+<!-- also: :::timeline :::sequence :::signals :::stack :::bits :::bars :::matrix :::tree :::callouts,
+     plot panels, diagram diamonds / bend= / loop, images with {width=half|third gray=1}, ::::row with |||;
+     examples/apollo/apollo.md shows each beside its source -->
 
 ## Procedures
 
