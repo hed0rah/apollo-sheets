@@ -6,7 +6,8 @@ bars and a black edge tab. US Letter, black ink, made to be printed and read wit
 
 Any plain Markdown report renders as it is. Front matter and a few `:::` blocks add the handbook furniture,
 including line-art block diagrams and graphs, timelines, plots, memory maps, bit fields, bar charts, comparison
-matrices, trees and labelled pictures, all drawn from text.
+matrices and heatmaps, trees, labelled pictures, scatter plots, distributions, sankeys, treemaps, quadrants, Venn
+diagrams and funnels, all drawn from text.
 
 | | | |
 |---|---|---|
@@ -18,7 +19,7 @@ Start a new sheet from [template.md](template.md). [kitchen-sink](examples/kitch
 
 ## Requirements
 
-- Python 3.10+, `matplotlib`, `pyyaml`
+- Python 3.8+, `matplotlib`, `numpy`, `pyyaml`
 - Google Chrome or Chromium (headless, prints the PDF)
 - the URW base35 fonts (Debian/Ubuntu: `apt install fonts-urw-base35`)
 - `pdftoppm` (poppler-utils), only for `--png`
@@ -76,24 +77,33 @@ Quote values that contain a colon.
 | `:::checklist TITLE \| ROLE` | a boxed procedure in typewriter |
 | `:::changed` | change bar in the gutter |
 | `::::row` ... `\|\|\|` ... `::::` | side-by-side columns |
-| `:::diagram Caption` | block diagram or graph: boxes, diamonds, curved back-edges, loops |
+| `:::diagram Caption` | block diagram or graph: boxes, diamonds, curved back-edges, loops, `ends=1:N` for ER |
 | `:::timeline Caption` | bars on one time axis |
-| `:::plot Caption` | lines from a CSV, or exact curves from `fn`; `panel` stacks panels on one x |
+| `:::plot Caption` | lines from a CSV, or exact curves from `fn`; `area` and `percent` bands; `panel` stacks panels on one x |
 | `:::sequence Caption` | messages between actors |
 | `:::signals Caption` | a timing diagram |
 | `:::budget Caption` | used against capacity, one gauge a line |
 | `:::stack Caption` | layers top to bottom: a protocol stack, a memory map with `at=` addresses |
 | `:::bits Caption` | register or packet fields, wrapped into rows of bits |
-| `:::bars Caption` | categorical bars: grouped, `stacked`, `horizontal`, `log` |
-| `:::matrix Caption` | a comparison: `yes` / `part` / `no` dots, numbers as sized dots |
+| `:::bars Caption` | categorical bars: grouped, `stacked`, `percent`, `horizontal`, `log` |
+| `:::matrix Caption` | a comparison: `yes` / `part` / `no` dots, numbers as sized dots; `shade` for a heatmap |
 | `:::tree Caption` | a hierarchy from an indented outline |
 | `:::callouts Caption` | leaders from points on a PNG to lettering in its margins |
+| `:::scatter Caption` | points and bubbles, from lines or a CSV; `fit` draws the least-squares line |
+| `:::dist Caption` | box plots from five numbers or raw CSV values, `violin`, or a `hist` |
+| `:::sankey Caption` | flows between stages, ribbons as wide as their values |
+| `:::treemap Caption` | nested shares from an indented outline |
+| `:::quadrant Caption` | a named 2 by 2 with points on it |
+| `:::venn Caption` | two or three overlapping sets, regions lettered |
+| `:::funnel Caption` | narrowing stages, each with its share of the first |
 
-A block that holds blocks takes four colons: `::::changed` around an `:::equations`, like `::::row`.
+A block that holds blocks takes four colons: `::::changed` around an `:::equations`, like `::::row`. A block
+that never closes, a missing image or a figure spec that does not parse stops the render with a message naming
+the block.
 
 The full syntax of every figure block, with each one drawn beside its source, is the reference sheet
 [examples/apollo/apollo.md](examples/apollo/apollo.md) ([PDF](examples/apollo/apollo.pdf)). The summaries below
-cover the first three.
+cover the first three and the scatter syntax; section A.8 of the reference sheet is a table for choosing a figure.
 
 Inline: `**bold**`, `*italic*`, `_underline_`, `` `code` ``, `H~2~O`, `10^6^`, ` -- ` for an en dash. Links
 keep their words and drop the URL.
@@ -105,6 +115,7 @@ grid 1.7 0.8                              # inches between columns and rows (opt
 node ID "LABEL" COL ROW [box|round|drum|dash|diamond|text] [w=COLS] [h=ROWS]
 edge FROM TO ["LABEL"] [dash] [both]
 edge FROM TO ["LABEL"] bend=R             # a curve: R > 0 bows right of the way it runs, < 0 left
+edge FROM TO ["LABEL"] ends=1:N           # lettering at each end: ER cardinality, 1:1 1:N N:M
 loop ID ["LABEL"] [top|bottom]            # an edge from a node back to itself
 fence "LABEL" ID ID ...                   # dashed boundary round a subsystem
 note COL ROW "TEXT"                       # small free lettering
@@ -127,9 +138,11 @@ call ROW AT "TEXT"                        # leader from a bar to lettering below
 ```
 csv data.csv                              # relative to the sheet
 x COLUMN ["LABEL"]
-y COLUMN ["LABEL"] [dots] [every=N]       # one per line, labelled at its right end
+y COLUMN ["LABEL"] [dots|step|area] [every=N]   # one per line, labelled at its right end; area stacks bands
+percent                                   # the area bands as shares of their sum
 range LO HI                               # x range for fn curves
-fn "EXPR" ["LABEL"]                       # a numpy expression in x, drawn exactly; degrees() and radians() too
+fn "EXPR" ["LABEL"]                       # an expression in x, drawn exactly: arithmetic and numpy functions
+                                          # (sin exp sqrt log10 pi where degrees radians ...), nothing else
 xlabel / ylabel "LABEL"
 log x|y|xy
 xlim / ylim LO HI
@@ -137,6 +150,17 @@ size wide | size W H
 mark AT "LABEL"
 hline AT "LABEL"
 panel                                     # another panel below, on the same x; the y lines after it go there
+```
+
+### scatter
+
+```
+point X Y ["LABEL"] [size=N]              # one point a line; size= makes it a bubble
+csv data.csv X Y [size=COL] [label=COL]   # points from columns of a CSV instead
+xlabel / ylabel "LABEL"
+log x|y|xy
+fit                                       # least-squares line and its r, on the axes as drawn
+size W H
 ```
 
 ### your own figures

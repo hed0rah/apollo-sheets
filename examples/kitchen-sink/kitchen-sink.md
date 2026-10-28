@@ -233,6 +233,79 @@ row "Quad D" no yes yes part
 :::
 ::::
 
+With shade, a matrix of numbers is a heatmap: each cell tinted by its value.
+
+:::matrix Jet Firings by Quad and Phase
+shade
+cols "Ullage" "Coast" "Braking" "Approach" "Landing"
+row "Quad A" 4 2 9 14 21
+row "Quad B" 4 1 7 12 18
+row "Quad C" 4 2 8 15 20
+row "Quad D" 4 1 6 11 17
+:::
+
+## Points and spreads
+
+A scatter letters its points and fits a line; a dist draws boxes from five numbers (or raw CSV values).
+
+::::row
+:::scatter Pulse Width and Impulse
+xlabel "pulse width, ms"
+ylabel "impulse, N s"
+fit
+point 14 0.41 "MIN"
+point 25 0.78
+point 50 1.62
+point 100 3.30
+point 200 6.71 "LONG"
+:::
+|||
+:::dist Jet Response by Quad
+box "A" 18 21 22 24 27
+box "B" 19 22 23 25 29 33
+box "C" 17 20 22 23 26
+box "D" 20 23 25 27 31
+unit "ms"
+mark 30 "LIMIT"
+:::
+::::
+
+## Flows
+
+A sankey draws flows between stages as ribbons as wide as their values.
+
+:::sankey Propellant Budget, kg
+unit "kg"
+size 4.2 2.0
+flow "system A" "attitude" 70
+flow "system A" "translation" 45
+flow "system A" "reserve" 25
+flow "system B" "attitude" 65
+flow "system B" "translation" 50
+flow "system B" "reserve" 25
+:::
+
+## Images and callouts
+
+Any SVG or PNG. Width may be half or third; gray=1 prints a dark screen capture as ink on paper. A callouts
+block draws leaders from points on a picture to lettering in its margins, on the nearer side.
+
+::::row
+![A screen capture, as captured](screen.png){width=half}
+|||
+![The same capture with gray=1](screen.png){width=half gray=1}
+::::
+
+:::callouts The Display, Named
+image screen.png gray
+at 0.33 0.22 "program number"
+at 0.15 0.52 "verb"
+at 0.53 0.45 "noun"
+at 0.03 0.69 "register 1"
+at 0.36 0.78 "register 2"
+at 0.64 0.69 "register 3"
+:::
+
 ## Trees
 
 :::tree Reaction Control, by System
@@ -246,26 +319,51 @@ RCS
   Ground test [dash]
 :::
 
-## Images
+## Shares and choices
 
-Any SVG or PNG. Width may be half or third; gray=1 prints a dark screen capture as ink on paper.
+A quadrant places items on two judgements; a Venn letters overlaps; a treemap nests shares; a funnel narrows.
 
 ::::row
-![A screen capture, as captured](screen.png){width=half}
+:::quadrant Anomalies to Work
+x "rare" "frequent"
+y "minor" "severe"
+name 1 "Fix now"
+name 2 "Plan for"
+name 3 "Log"
+name 4 "Work round"
+point 0.2 0.8 "radar dropout"
+point 0.75 0.75 "jet leak"
+point 0.8 0.25 "display flicker"
+point 0.3 0.2 "clock drift"
+:::
 |||
-![The same capture with gray=1](screen.png){width=half gray=1}
+:::venn Jets by Duty
+set "Pitch" "Yaw" "Roll"
+in AC "quads A, C"
+in BC "quads B, D"
+:::
 ::::
 
-## Callouts
+:::treemap Flight Software by Module, Words
+guidance
+  navigation 6200
+  targeting 3100
+  steering 2400
+control
+  attitude 4100
+  thrust 1800
+executive
+  jobs 1500
+  waitlist 700
+displays
+  verbs 1900
+  nouns 1200
+:::
 
-Leaders from points on a picture to lettering in its margins, on the nearer side.
-
-:::callouts The Display, Named
-image screen.png gray
-at 0.33 0.22 "program number"
-at 0.15 0.52 "verb"
-at 0.53 0.45 "noun"
-at 0.03 0.69 "register 1"
-at 0.36 0.78 "register 2"
-at 0.64 0.69 "register 3"
+:::funnel Pre-Flight Checks
+unit "checks"
+stage "planned" 120
+stage "run" 112
+stage "passed" 104
+stage "signed off" 98
 :::

@@ -687,6 +687,385 @@ at 0.36 0.78 "register 2"
 at 0.64 0.69 "register 3"
 :::
 
+## Data, flows and decisions
+
+### Stacked areas and shares
+`area` on a plot series stacks it as a hatched band on the area series before it; `percent` turns a panel's bands
+into shares of their sum. The commits to an example repository, by where they landed (a commit touching two areas counts
+in each):
+
+::::row
+```
+:::plot Commits by Area
+csv data/commits.csv
+x day "days from 10.09.2026"
+y other "OTHER" area
+y notes "NOTES" area
+y viz "VIZ" area
+y sheets "SHEETS" area
+ylabel "commits, cumulative"
+:::
+```
+|||
+:::plot Commits to an Example Repository by Area, Cumulative
+csv data/commits.csv
+x day "days from 10.09.2026"
+y other "OTHER" area
+y notes "NOTES" area
+y viz "VIZ" area
+y sheets "SHEETS" area
+ylabel "commits, cumulative"
+:::
+::::
+
+`percent` on `:::bars` does the same for categories: each bar is its own 100 %. The bytes in four directories of
+the same repository, by kind of file (KB, tracked files, 10.28.2026):
+
+::::row
+```
+:::bars Bytes by Kind
+series "Figures" "Code" "Text" "Data"
+percent
+horizontal
+bar "sheets" 2422 86 43 5
+bar "viz" 2489 49 22 0
+bar "notes" 1001 0 24 0
+bar "records" 0 0 0 98
+:::
+```
+|||
+:::bars Bytes by Kind of File, Four Directories
+series "Figures" "Code" "Text" "Data"
+percent
+horizontal
+bar "sheets" 2422 86 43 5
+bar "viz" 2489 49 22 0
+bar "notes" 1001 0 24 0
+bar "records" 0 0 0 98
+:::
+::::
+
+### Scatter and bubbles
+`:::scatter` places points, lettered if named, as bubbles if given a size; `fit` draws the least-squares line and
+its r, on the axes as drawn. Clock against on-chip SRAM:
+
+::::row
+```
+:::scatter Clock and SRAM
+xlabel "max clock, MHz"
+ylabel "SRAM, KB"
+log y
+fit
+point 20 2 "ATmega328P"
+point 72 20 "STM32F103C8"
+point 133 264 "RP2040"
+point 240 520 "ESP32"
+point 150 520 "RP2350"
+:::
+```
+|||
+:::scatter Five Microcontrollers: Clock and SRAM
+xlabel "max clock, MHz"
+ylabel "SRAM, KB"
+log y
+fit
+point 20 2 "ATmega328P"
+point 72 20 "STM32F103C8"
+point 133 264 "RP2040"
+point 240 520 "ESP32"
+point 150 520 "RP2350"
+:::
+::::
+
+### Distributions
+`:::dist` draws boxes from five numbers, or from raw CSV values (`data`, quartiles, whiskers to 1.5 IQR, the rest as
+outliers), with `violin` round them; `hist` draws a histogram instead. The time `render()` takes, 40 runs on each of
+three sheets, 10.28.2026; across all 120 the median is 237 ms and the 95th percentile 371 ms:
+
+::::row
+```
+:::dist Render Time by Sheet
+data "report A" data/render-ms.csv ms where=sheet:report-a
+data "report B" data/render-ms.csv ms where=sheet:report-b
+data "template" data/render-ms.csv ms where=sheet:template
+violin
+unit "ms"
+mark 371 "P95"
+:::
+
+:::dist All 120 Runs
+hist data/render-ms.csv ms bins=24
+unit "ms"
+mark 237 "P50"
+mark 371 "P95"
+:::
+```
+|||
+:::dist Render Time by Sheet, 40 Runs Each
+data "report A" data/render-ms.csv ms where=sheet:report-a
+data "report B" data/render-ms.csv ms where=sheet:report-b
+data "template" data/render-ms.csv ms where=sheet:template
+violin
+unit "ms"
+mark 371 "P95"
+:::
+
+:::dist All 120 Runs
+hist data/render-ms.csv ms bins=24
+unit "ms"
+mark 237 "P50"
+mark 371 "P95"
+:::
+::::
+
+### Heatmaps
+`shade` on a `:::matrix` tints each numeric cell by its value and letters it: a heatmap in one ink. The 47 commits
+to the example repository by weekday and four-hour block, in the committer's local time:
+
+```
+:::matrix Commits by Hour
+shade
+cols "00-04" "04-08" "08-12" "12-16" "16-20" "20-24"
+row "Mon" 0 0 0 9 2 6
+row "Tue" 0 0 3 0 0 0
+row "Wed" 0 0 3 1 0 0
+row "Thu" 0 0 1 5 2 0
+row "Fri" 3 0 0 0 1 6
+row "Sat" 0 0 1 0 0 0
+row "Sun" 0 0 2 0 0 2
+:::
+```
+
+:::matrix Commits to the Example Repository by Weekday and Hour
+shade
+cols "00-04" "04-08" "08-12" "12-16" "16-20" "20-24"
+row "Mon" 0 0 0 9 2 6
+row "Tue" 0 0 3 0 0 0
+row "Wed" 0 0 3 1 0 0
+row "Thu" 0 0 1 5 2 0
+row "Fri" 3 0 0 0 1 6
+row "Sat" 0 0 1 0 0 0
+row "Sun" 0 0 2 0 0 2
+:::
+
+### Sankey
+`:::sankey` draws flows between stages, each ribbon as wide as its value; columns follow from the flows. The same
+bytes as Figure A-19, from directory to kind of file:
+
+```
+:::sankey Where the Bytes Are
+unit "KB"
+flow "sheets" "Figures" 2422
+flow "sheets" "Code" 86
+flow "sheets" "Text" 43
+flow "sheets" "Data" 5
+flow "viz" "Figures" 2489
+flow "viz" "Code" 49
+flow "viz" "Text" 22
+flow "notes" "Figures" 1001
+flow "notes" "Text" 24
+flow "records" "Data" 98
+:::
+```
+
+:::sankey Where the Bytes Are, Directory to Kind of File (KB)
+unit "KB"
+flow "sheets" "Figures" 2422
+flow "sheets" "Code" 86
+flow "sheets" "Text" 43
+flow "sheets" "Data" 5
+flow "viz" "Figures" 2489
+flow "viz" "Code" 49
+flow "viz" "Text" 22
+flow "notes" "Figures" 1001
+flow "notes" "Text" 24
+flow "records" "Data" 98
+:::
+
+### Treemaps
+`:::treemap` sets nested shares as rectangles from an indented outline; a leaf ends in its value. The example repository's
+tracked files by directory and extension, in KB:
+
+```
+:::treemap Disk Use
+sheets
+  pdf 2255
+  svg 131
+  py 79
+...
+notebooks
+  ipynb 23
+:::
+```
+
+:::treemap Tracked Files by Directory and Extension, KB (10.28.2026)
+sheets
+  pdf 2255
+  svg 131
+  py 79
+  md 43
+  png 36
+  css 7
+  csv 5
+viz
+  png 1200
+  pdf 1022
+  svg 268
+  py 49
+  md 22
+notes
+  jpg 706
+  png 193
+  gif 102
+  txt 13
+  md 11
+records
+  tsv 52
+  jsonl 46
+scripts
+  py 31
+  other 5
+notebooks
+  ipynb 23
+:::
+
+### Entity relationships
+`ends=1:N` on a diagram edge letters each end: the cardinality of an ER model. An example schema:
+
+```
+:::diagram An Order Schema
+grid 1.9 0.8
+node cust "CUSTOMER\nid, name" 0 0
+node order "ORDER\nid, placed" 1 0
+node line "LINE ITEM\nqty, price" 2 0
+node prod "PRODUCT\nsku, name" 3 0
+edge cust order "PLACES" ends=1:N
+edge order line "HOLDS" ends=1:N
+edge line prod "NAMES" ends=N:1
+:::
+```
+
+:::diagram An Order Schema (Example)
+grid 1.9 0.8
+node cust "CUSTOMER\nid, name" 0 0
+node order "ORDER\nid, placed" 1 0
+node line "LINE ITEM\nqty, price" 2 0
+node prod "PRODUCT\nsku, name" 3 0
+edge cust order "PLACES" ends=1:N
+edge order line "HOLDS" ends=1:N
+edge line prod "NAMES" ends=N:1
+:::
+
+### Quadrants, sets and funnels
+`:::quadrant` names the four quarters of two axes and places points on them, here one writer's estimate of the
+figures on this sheet; `:::venn` letters the regions of two or three sets, here the matrix of Figure A-14 seen
+another way; `:::funnel` narrows stage by stage, each with its share of the first: the example repository's files.
+
+::::row
+```
+:::quadrant What to Draw Next
+x "low effort" "high effort"
+y "low value" "high value"
+name 1 "Plan for"
+name 2 "Do first"
+name 3 "Maybe"
+name 4 "Skip"
+point 0.2 0.85 "bars"
+point 0.3 0.8 "heatmap"
+point 0.62 0.7 "sankey"
+point 0.85 0.3 "sunburst"
+point 0.9 0.2 "exploded view"
+point 0.35 0.35 "venn"
+:::
+```
+|||
+:::quadrant Value and Effort of Figure Types (One Writer's Estimate)
+x "low effort" "high effort"
+y "low value" "high value"
+name 1 "Plan for"
+name 2 "Do first"
+name 3 "Maybe"
+name 4 "Skip"
+point 0.2 0.85 "bars"
+point 0.3 0.8 "heatmap"
+point 0.62 0.7 "sankey"
+point 0.85 0.3 "sunburst"
+point 0.9 0.2 "exploded view"
+point 0.35 0.35 "venn"
+:::
+::::
+
+```
+:::venn Three Features
+set "Wi-Fi" "USB host and device" "Two cores"
+in ABC ""
+in AC "ESP32"
+in BC "RP2040\nRP2350"
+in out "ATmega328P\nSTM32F103C8"
+:::
+```
+
+:::venn Five Microcontrollers, Three Features (from Figure A-14)
+set "Wi-Fi" "USB host and device" "Two cores"
+in AC "ESP32"
+in BC "RP2040\nRP2350"
+in out "ATmega328P\nSTM32F103C8"
+:::
+
+```
+:::funnel Files
+unit "files"
+stage "tracked" 89
+stage "text" 68
+stage "Python" 20
+stage "in sheets/" 5
+:::
+```
+
+:::funnel Files in the Example Repository, 10.28.2026
+unit "files"
+stage "tracked" 89
+stage "text" 68
+stage "Python" 20
+stage "in sheets/" 5
+:::
+
+## Which figure
+
+:::table Choosing a Figure
+| If the material is | Use | Not |
+|---|---|---|
+| a quantity over time, or a function of x | `:::plot` (`fn` for exact, `y` for data, `area` for parts) | bars per date |
+| parts of a whole over time | `:::plot` with `area` and `percent` | a row of pies |
+| categories compared | `:::bars`, `horizontal` for long names | a line through categories |
+| parts of each category's whole | `:::bars percent` | pies, donuts |
+| two quantities against each other | `:::scatter`, `fit` for the trend | a table |
+| a spread, latency, tolerance | `:::dist`: box, violin, `hist` | a bare average |
+| a grid of values: hour by day, x by y | `:::matrix shade` | a table of numbers alone |
+| yes and no across items | `:::matrix` with `yes part no` | ticks in a table |
+| used against capacity | `:::budget` | a pie |
+| components and what feeds what | `:::diagram` | prose |
+| decisions, loops, states | `:::diagram` with `diamond`, `bend=`, `loop` | a numbered list of ifs |
+| tables and their relations | `:::diagram` with `ends=1:N` | |
+| messages between actors over time | `:::sequence` | a diagram with numbered arrows |
+| signals on a clock | `:::signals` | a table of levels |
+| phases, a schedule, a mission | `:::timeline` | |
+| a hierarchy | `:::tree` | indented text |
+| nested shares: disk, budget by part | `:::treemap` | a sunburst |
+| quantities moving between stages | `:::sankey` | arrows with numbers |
+| stages that narrow | `:::funnel` | |
+| layers, tiers, an address map | `:::stack` | |
+| a register or a header | `:::bits` | a table of offsets |
+| two judgements at once | `:::quadrant` | |
+| overlap between groups | `:::venn` (three sets at most) | |
+| the parts of a thing you can photograph | `:::callouts` | a long caption |
+| a procedure | `:::checklist` | a paragraph of steps |
+:::
+
+Anything that must move, take input or recalculate (a planner with sliders, a live simulation) is not a sheet: it
+belongs in an interactive page. A sheet carries its static half: the figure at its stated values, and the table
+or formula behind it.
+
 ## Making a sheet
 
 :::checklist Turn a Report into a Sheet | Writer
@@ -706,4 +1085,6 @@ that do not print. Later changes go in `:::changed` with `change:` set in the fr
 Chrome does not print into the page margins, so the gutter numbers, edge tab and change bars sit inside the
 content box: keep `main`'s padding when restyling. A block closes at the first line of exactly its own colons, so a
 block that holds blocks takes four (`::::changed` around `:::equations`), and a row's source cannot be shown in a row.
+Wide figures (`bits`, `signals`, `sankey`, `treemap`, `timeline`, a heatmap) want the full column: in a `::::row` their
+lettering shrinks below reading size.
 :::

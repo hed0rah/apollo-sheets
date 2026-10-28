@@ -18,8 +18,11 @@ description: Render a Markdown report as a print-ready PDF review sheet in the s
    `:::checklist` for a procedure, `:::caution` / `:::warning` for hazards, `:::sequence` for hand-offs or
    protocols, `:::signals` for timing, `:::budget` for used-against-capacity, `:::stack` for layers or a memory
    map, `:::bits` for register or packet fields, `:::bars` for categories, `:::matrix` for a feature comparison,
-   `:::tree` for a hierarchy, `:::callouts` to name the parts of a picture, `:::equations` and `:::symbols` for
-   derivations. A block that holds
+   `:::tree` for a hierarchy, `:::callouts` to name the parts of a picture, `:::scatter` (`point X Y "LABEL"`,
+   `fit`) for two quantities, `:::dist` for a spread, `:::sankey` for flows, `:::treemap` for nested shares,
+   `:::quadrant`, `:::venn` and `:::funnel`, `:::equations` and `:::symbols` for derivations. Options worth
+   knowing: `area` and `percent` on a plot, `percent` on bars, `shade` on a matrix for a heatmap, `ends=1:N` on
+   a diagram edge. Section A.8 of the reference sheet is a table for choosing a figure. A block that holds
    blocks takes four colons (`::::changed` around `:::equations`).
 3. Render with page PNGs and look at every page:
 
@@ -28,9 +31,11 @@ description: Render a Markdown report as a print-ready PDF review sheet in the s
 4. Fix what overlaps. Diagram edges route round other boxes (one elbow, else a Z through a gap); if none
    clears, move nodes or use `bend=R` rather than accept an edge through a box. Keep timeline `call` lettering
    clear of the tick labels, and put callout points where their leaders do not cross the picture's own lettering.
+   Keep wide figures (`bits`, `signals`, `sankey`, `treemap`, `timeline`, a heatmap) out of `::::row`. An
+   unclosed block, a missing image or a bad figure spec stops the render with a message naming the block.
 
 To ingest someone else's report without editing it, set front matter from the command line:
 `-s section=3 -s tab=PHY`.
 
-Requirements: python3 with matplotlib and pyyaml, Chrome or Chromium, the URW base35 fonts. `SHEET_FONTS` and
-`SHEET_CHROME` override the font directory and browser.
+Requirements: Python 3.8+ with matplotlib, numpy and pyyaml, Chrome or Chromium, the URW base35 fonts.
+`SHEET_FONTS` and `SHEET_CHROME` override the font directory and browser.
