@@ -367,3 +367,144 @@ stage "run" 112
 stage "passed" 104
 stage "signed off" 98
 :::
+
+## Totals and changes
+
+A waterfall walks a running total; a slope runs each thing from one build to the next; a waffle counts shares.
+
+::::row
+:::waterfall Propellant over a Burn, kg
+unit "kg"
+start "Loaded" 280
+step "Ullage" -6
+step "Burn" -150
+step "Trim" -12
+total "Left"
+:::
+|||
+:::slope Jet Response by Build, ms
+heads "build 1" "build 2"
+unit "ms"
+item "quad A" 24 21
+item "quad B" 29 23
+item "quad C" 23 22
+item "quad D" 31 25
+:::
+::::
+
+::::row
+:::waffle Thruster Time by Axis
+part "Pitch" 38
+part "Yaw" 31
+part "Roll" 22
+part "Translation" 9
+:::
+|||
+:::bars Jet Response, Median and Worst
+series "Median" "Worst"
+dots
+horizontal
+unit "ms"
+bar "quad A" 22 27
+bar "quad B" 23 33
+bar "quad C" 22 26
+bar "quad D" 25 31
+:::
+::::
+
+## Fields, directions and many measures
+
+A contour draws a field with its arrows; a raster sets it as gray; a polar plot draws a pattern or a wind rose;
+parallel axes give each measure its own axis.
+
+::::row
+:::contour Attitude Error Potential
+fn "x**2 + 2*y**2"
+range -2 2 -2 2
+levels 0.5 1 2 4
+arrows 9
+xlabel "pitch error, deg"
+ylabel "yaw error, deg"
+:::
+|||
+:::raster The Same, as Gray
+fn "x**2 + 2*y**2"
+extent -2 2 -2 2
+unit "potential"
+size 3.4 2.6
+:::
+::::
+
+::::row
+:::polar Landing-Site Winds, Example
+rose N 6
+rose NE 4
+rose E 9
+rose SE 3
+rose S 2
+rose SW 5
+rose W 7
+rose NW 4
+:::
+|||
+:::parallel Four Quads, Four Measures
+axes "firings" "response, ms" "leak, mg/s" "cycles, k"
+item "quad A" 54 22 0.4 12
+item "quad B" 46 23 0.9 10
+item "quad C" 53 22 0.3 13
+item "quad D" 44 25 1.2 9
+:::
+::::
+
+## Networks, lanes and plans
+
+A network lays out a graph for you; lanes give each row of a diagram an owner; milestones and dependencies make a
+timeline a plan.
+
+:::network Who Talks to Whom
+link "guidance" "control" arrow
+link "control" "jets" arrow
+link "imu" "guidance" arrow
+link "radar" "guidance" arrow
+link "guidance" "displays" arrow
+link "crew" "displays" dash
+:::
+
+:::diagram Quad Isolation, by Crew Member
+grid 1.6 0.75
+lane "CDR" 0
+lane "LMP" 1
+node call "CALL\nLEAK" 0 1 round
+node isol "ISOLATE\nQUAD" 1 0
+node check "PRESSURE\nHOLDS?" 2 1 diamond w=0.9 h=0.95
+node done "LOG IT" 3 0 round
+edge call isol
+edge isol check
+edge check isol "NO" bend=-0.5
+edge check done "YES"
+:::
+
+:::timeline Bring-Up Plan, Days
+axis "days" 0 10 ticks=1
+bar "Bench" 0 3 hatch
+bar "Thermal" 3 6 open
+bar "Vibration" 4 7 open
+bar "Review" 7 9 hatch
+milestone "Review" 9.5 "SIGN-OFF"
+after "Bench" "Thermal"
+after "Vibration" "Review"
+:::
+
+## Maps and sparklines
+
+A map draws GeoJSON or shapefile layers with points, routes, a graticule and a scale. A sparkline sits in a line
+of text, the last value dotted: quad B's response over six builds ran [[spark 33 31 29 27 25 23]], ms.
+
+:::map Recovery Area, Example
+layer ../apollo/data/pacific-land.geojson hatch
+extent -162 -154 18 23
+graticule 1
+point -157.95 21.35 "BASE" star
+route -161.5 19.0 -159.5 20.0 -157.95 21.35 "SHIP" dash
+scale 100
+:::
