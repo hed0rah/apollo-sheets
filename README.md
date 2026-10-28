@@ -5,11 +5,12 @@ gutter, "Figure 2.1-1." captions, drawing numbers, ruled tables, cautions and wa
 bars and a black edge tab. US Letter, black ink, made to be printed and read with a pen.
 
 Any plain Markdown report renders as it is. Front matter and a few `:::` blocks add the handbook furniture,
-including line-art block diagrams, timelines and plots drawn from text.
+including line-art block diagrams and graphs, timelines, plots, memory maps, bit fields, bar charts, comparison
+matrices, trees and labelled pictures, all drawn from text.
 
 | | | |
 |---|---|---|
-| ![reference, page 6](examples/apollo/apollo-6.png) | ![rc filter](examples/rc-filter/rc-filter-1.png) | ![lander](examples/lander/lander-1.png) |
+| ![reference, page 8](examples/apollo/apollo-08.png) | ![rc filter](examples/rc-filter/rc-filter-1.png) | ![lander](examples/lander/lander-1.png) |
 | [apollo](examples/apollo/apollo.md): the reference sheet, every block beside its source | [rc-filter](examples/rc-filter/rc-filter.md): diagram, math, log plot | [lander](examples/lander/lander.md): timeline, checklists, cream paper |
 
 Start a new sheet from [template.md](template.md). [kitchen-sink](examples/kitchen-sink/kitchen-sink.md) and
@@ -75,12 +76,18 @@ Quote values that contain a colon.
 | `:::checklist TITLE \| ROLE` | a boxed procedure in typewriter |
 | `:::changed` | change bar in the gutter |
 | `::::row` ... `\|\|\|` ... `::::` | side-by-side columns |
-| `:::diagram Caption` | block diagram |
+| `:::diagram Caption` | block diagram or graph: boxes, diamonds, curved back-edges, loops |
 | `:::timeline Caption` | bars on one time axis |
-| `:::plot Caption` | lines from a CSV, or exact curves from `fn` |
+| `:::plot Caption` | lines from a CSV, or exact curves from `fn`; `panel` stacks panels on one x |
 | `:::sequence Caption` | messages between actors |
 | `:::signals Caption` | a timing diagram |
 | `:::budget Caption` | used against capacity, one gauge a line |
+| `:::stack Caption` | layers top to bottom: a protocol stack, a memory map with `at=` addresses |
+| `:::bits Caption` | register or packet fields, wrapped into rows of bits |
+| `:::bars Caption` | categorical bars: grouped, `stacked`, `horizontal`, `log` |
+| `:::matrix Caption` | a comparison: `yes` / `part` / `no` dots, numbers as sized dots |
+| `:::tree Caption` | a hierarchy from an indented outline |
+| `:::callouts Caption` | leaders from points on a PNG to lettering in its margins |
 
 A block that holds blocks takes four colons: `::::changed` around an `:::equations`, like `::::row`.
 
@@ -95,14 +102,16 @@ keep their words and drop the URL.
 
 ```
 grid 1.7 0.8                              # inches between columns and rows (optional)
-node ID "LABEL" COL ROW [box|round|drum|dash|text] [w=COLS] [h=ROWS]
+node ID "LABEL" COL ROW [box|round|drum|dash|diamond|text] [w=COLS] [h=ROWS]
 edge FROM TO ["LABEL"] [dash] [both]
+edge FROM TO ["LABEL"] bend=R             # a curve: R > 0 bows right of the way it runs, < 0 left
+loop ID ["LABEL"] [top|bottom]            # an edge from a node back to itself
 fence "LABEL" ID ID ...                   # dashed boundary round a subsystem
 note COL ROW "TEXT"                       # small free lettering
 ```
 
-Edges route orthogonally with one elbow at most, so lay nodes out so an elbow does not cross a box.
-`\n` breaks a label.
+Edges route orthogonally round the other boxes: straight, one elbow either way, or a Z through the gap between
+rows or columns. A `diamond` is a decision; `bend=R` is for back-edges and cycles. `\n` breaks a label.
 
 ### timeline
 
@@ -120,13 +129,14 @@ csv data.csv                              # relative to the sheet
 x COLUMN ["LABEL"]
 y COLUMN ["LABEL"] [dots] [every=N]       # one per line, labelled at its right end
 range LO HI                               # x range for fn curves
-fn "EXPR" ["LABEL"]                       # a numpy expression in x, drawn exactly
+fn "EXPR" ["LABEL"]                       # a numpy expression in x, drawn exactly; degrees() and radians() too
 xlabel / ylabel "LABEL"
 log x|y|xy
 xlim / ylim LO HI
 size wide | size W H
 mark AT "LABEL"
 hline AT "LABEL"
+panel                                     # another panel below, on the same x; the y lines after it go there
 ```
 
 ### your own figures

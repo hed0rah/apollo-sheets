@@ -110,6 +110,25 @@ edge ground mem "state vector" dash
 note 3 1 "four quads,\nsixteen jets"
 :::
 
+## Graphs
+
+A diagram is also a graph: a diamond is a decision, `bend=` curves a back-edge, and a loop returns a node to
+itself.
+
+:::diagram Attitude Hold, a Decision Loop
+grid 1.6 0.9
+node sense "sense\nattitude" 0 0 round
+node err "error\npast band?" 1 0 diamond w=0.8 h=1.1
+node fire "fire\njets" 2 0
+node coast "coast" 1 1 dash
+edge sense err
+edge err fire "YES"
+edge err coast "NO" dash
+edge fire sense "NEXT CYCLE" bend=0.4
+edge coast sense "NEXT CYCLE" bend=-0.3
+loop fire "PULSE TRAIN" top
+:::
+
 ## Timelines
 
 Bars may be hatched, open or solid; marks are vertical lines with a label above, and a call drops a leader from a
@@ -154,6 +173,79 @@ log y
 :::
 ::::
 
+## Panels
+
+A panel line starts a second panel under the first, on the same x; fn takes degrees() and radians().
+
+:::plot Rate Loop, Gain and Phase
+size 3.4 1.6
+range 0.1 10
+log x
+fn "-10*log10((1-x**2)**2+(0.6*x)**2)"
+ylabel "gain, dB"
+mark 1 "NATURAL FREQUENCY"
+panel
+fn "-degrees(arctan2(0.6*x, 1-x**2))"
+ylabel "phase, deg"
+ylim -185 5
+hline -90 "-90 DEG"
+xlabel "w / wn"
+:::
+
+## Stacks and bit fields
+
+A stack sets layers top to bottom; a bit field wraps fields into rows of bits, hatching the reserved ones.
+
+:::stack Flight Software Layers
+layer "Mission programs" "P00 TO P99"
+layer "Interpreter" "VECTOR AND MATRIX OPS"
+layer "Executive" "JOBS AND WAITLIST" hatch
+layer "Hardware" "COUNTERS, CHANNELS" dash
+span 2 3 "SYSTEM"
+:::
+
+:::bits Jet Command Word
+width 16
+field "Quad" 2
+field "Jet" 2
+field "Reserved" 4 hatch
+field "Pulse width" 8
+:::
+
+## Bars and matrices
+
+::::row
+:::bars Firings by Quad
+series "Rotation" "Translation"
+unit "firings"
+bar "A" 42 12
+bar "B" 37 9
+bar "C" 39 14
+bar "D" 33 11
+:::
+|||
+:::matrix Quad Authority
+cols "Pitch" "Yaw" "Roll" "Translation"
+row "Quad A" yes no yes part
+row "Quad B" no yes yes part
+row "Quad C" yes no yes part
+row "Quad D" no yes yes part
+:::
+::::
+
+## Trees
+
+:::tree Reaction Control, by System
+RCS
+  System A
+    Quad A
+    Quad C
+  System B
+    Quad B
+    Quad D
+  Ground test [dash]
+:::
+
 ## Images
 
 Any SVG or PNG. Width may be half or third; gray=1 prints a dark screen capture as ink on paper.
@@ -163,3 +255,17 @@ Any SVG or PNG. Width may be half or third; gray=1 prints a dark screen capture 
 |||
 ![The same capture with gray=1](screen.png){width=half gray=1}
 ::::
+
+## Callouts
+
+Leaders from points on a picture to lettering in its margins, on the nearer side.
+
+:::callouts The Display, Named
+image screen.png gray
+at 0.33 0.22 "program number"
+at 0.15 0.52 "verb"
+at 0.53 0.45 "noun"
+at 0.03 0.69 "register 1"
+at 0.36 0.78 "register 2"
+at 0.64 0.69 "register 3"
+:::

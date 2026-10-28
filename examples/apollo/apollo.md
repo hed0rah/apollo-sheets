@@ -261,8 +261,8 @@ hline 48000 "ONE PER SAMPLE"
 
 ### Block diagrams
 Figure A-1 is a `:::diagram`. Nodes sit on a grid of columns and rows (`grid DX DY` in inches, if the default
-1.55 by 0.78 crowds the lettering); edges route themselves straight or with one elbow and are labelled on their
-longest run. Shapes: `box`, `round` for ends, `dash` for the optional, `drum` for storage, `text` for bare lettering;
+1.55 by 0.78 crowds the lettering); edges route themselves straight, with one elbow, or with a Z through the gap between rows or
+columns, whichever clears the other boxes, and are labelled on their longest run. Shapes: `box`, `round` for ends, `dash` for the optional, `drum` for storage, `text` for bare lettering;
 `fence "LABEL" ids...` draws a dashed subsystem boundary.
 
 ```
@@ -406,6 +406,286 @@ side by side, columns split on a line `|||`, closed by `::::`; anything can go i
 |||
 ![A Dark Screen Capture, Printed as Ink](../kitchen-sink/screen.png){width=third gray=1}
 ::::
+
+## More figures
+
+### Graphs: decisions, back-edges and loops
+`:::diagram` draws graphs as well as block diagrams: a `diamond` node for a decision, `bend=R` on an edge for a
+curve (a back-edge to an earlier step; R above 0 bows right of the way it runs, below 0 left), and `loop ID` for a
+node that goes back to itself. An agent's loop, the shape of a LangGraph graph:
+
+```
+:::diagram An Agent Loop as a Graph
+grid 1.5 0.9
+node start "START" 0 0 round
+node plan "PLAN" 1 0
+node act "ACT\n(TOOLS)" 2 0
+node check "DONE?" 3 0 diamond w=0.8 h=1.1
+node end "END" 4 0 round
+node human "HUMAN\nREVIEW" 3 1 dash
+edge start plan
+edge plan act
+edge act check
+edge check end "YES"
+edge check plan "NO: REPLAN" bend=0.45
+edge check human "UNSURE" dash
+edge human plan "EDITS" bend=-0.3
+loop act "TOOL CALL" bottom
+:::
+```
+
+:::diagram An Agent Loop as a Graph
+grid 1.5 0.9
+node start "START" 0 0 round
+node plan "PLAN" 1 0
+node act "ACT\n(TOOLS)" 2 0
+node check "DONE?" 3 0 diamond w=0.8 h=1.1
+node end "END" 4 0 round
+node human "HUMAN\nREVIEW" 3 1 dash
+edge start plan
+edge plan act
+edge act check
+edge check end "YES"
+edge check plan "NO: REPLAN" bend=0.45
+edge check human "UNSURE" dash
+edge human plan "EDITS" bend=-0.3
+loop act "TOOL CALL" bottom
+:::
+
+### Stacks and memory maps
+`:::stack` sets layers top to bottom: a protocol stack, memory tiers, or with `at=` an address map. `span` brackets
+a run of layers. The RP2040's address map:
+
+```
+:::stack RP2040 Address Map
+layer "ROM" "16 KB BOOTROM" at=0x00000000
+layer "XIP flash" "EXTERNAL QSPI, UP TO 16 MB" at=0x10000000
+layer "SRAM" "264 KB IN SIX BANKS" hatch at=0x20000000
+layer "APB peripherals" "UART, SPI, I2C, PWM, ADC" at=0x40000000
+layer "AHB-Lite peripherals" "DMA, USB, PIO" at=0x50000000
+layer "SIO" "SINGLE-CYCLE IO, PER CORE" at=0xD0000000
+layer "Cortex-M0+ PPB" "NVIC, SYSTICK" at=0xE0000000
+span 4 6 "PERIPHERALS"
+:::
+```
+
+:::stack RP2040 Address Map (Datasheet 2.2)
+layer "ROM" "16 KB BOOTROM" at=0x00000000
+layer "XIP flash" "EXTERNAL QSPI, UP TO 16 MB" at=0x10000000
+layer "SRAM" "264 KB IN SIX BANKS" hatch at=0x20000000
+layer "APB peripherals" "UART, SPI, I2C, PWM, ADC" at=0x40000000
+layer "AHB-Lite peripherals" "DMA, USB, PIO" at=0x50000000
+layer "SIO" "SINGLE-CYCLE IO, PER CORE" at=0xD0000000
+layer "Cortex-M0+ PPB" "NVIC, SYSTICK" at=0xE0000000
+span 4 6 "PERIPHERALS"
+:::
+
+### Bit fields
+`:::bits` lays out a register or a packet header, wrapping fields into rows of `width` bits; `numbers up` counts
+from 0 at the left as the RFCs do, `numbers down` from the top bit as a datasheet's register does; `hatch` marks
+reserved bits.
+
+```
+:::bits IPv4 Header
+numbers up
+field "Version" 4
+field "IHL" 4
+field "DSCP" 6
+field "ECN" 2
+field "Total length" 16
+field "Identification" 16
+field "Flags" 3
+field "Fragment offset" 13
+field "TTL" 8
+field "Protocol" 8
+field "Header checksum" 16
+field "Source address" 32
+field "Destination address" 32
+:::
+```
+
+:::bits IPv4 Header (RFC 791; DSCP and ECN from RFCs 2474 and 3168)
+numbers up
+field "Version" 4
+field "IHL" 4
+field "DSCP" 6
+field "ECN" 2
+field "Total length" 16
+field "Identification" 16
+field "Flags" 3
+field "Fragment offset" 13
+field "TTL" 8
+field "Protocol" 8
+field "Header checksum" 16
+field "Source address" 32
+field "Destination address" 32
+:::
+
+### Bars
+`:::bars` compares categories: one value a series, series side by side or `stacked`, told apart by hatch with a
+key above only when there is more than one; `horizontal` for long names, `log` for spans of decades. Values print
+at the bar ends.
+
+::::row
+```
+:::bars On-Chip SRAM
+horizontal
+log
+unit "KB"
+bar "ATmega328P" 2
+bar "STM32F103C8" 20
+bar "RP2040" 264
+bar "ESP32" 520
+bar "RP2350" 520
+:::
+```
+|||
+:::bars On-Chip SRAM, KB
+horizontal
+log
+unit "KB"
+bar "ATmega328P" 2
+bar "STM32F103C8" 20
+bar "RP2040" 264
+bar "ESP32" 520
+bar "RP2350" 520
+:::
+::::
+
+::::row
+```
+:::bars Time to Render a Sheet
+series "Python" "Chrome"
+stacked
+unit "seconds"
+bar "Service A" 0.38 0.65
+bar "Firmware B" 0.22 0.86
+bar "Template" 0.24 0.59
+:::
+```
+Measured 10.28.2026, the best of three runs: Python is `render()`, Chrome the print to PDF.
+|||
+:::bars Time to Render a Sheet, Seconds
+series "Python" "Chrome"
+stacked
+unit "seconds"
+bar "Service A" 0.38 0.65
+bar "Firmware B" 0.22 0.86
+bar "Template" 0.24 0.59
+:::
+::::
+
+### Matrices
+`:::matrix` compares at a glance: `yes`, `part` and `no` print as a full, half and open dot, `-` as a dash, a number
+as a dot of that area, anything else as lettering.
+
+```
+:::matrix Five Microcontrollers
+cols "Wi-Fi" "Bluetooth LE" "USB host and device" "Hardware FPU" "Two cores"
+row "ATmega328P" no no no no no
+row "STM32F103C8" no no part no no
+row "RP2040" no no yes no yes
+row "ESP32" yes yes no yes yes
+row "RP2350" no no yes yes yes
+:::
+```
+
+:::matrix Five Microcontrollers (Half Dot: the STM32F103's USB Is Device Only)
+cols "Wi-Fi" "Bluetooth LE" "USB host and device" "Hardware FPU" "Two cores"
+row "ATmega328P" no no no no no
+row "STM32F103C8" no no part no no
+row "RP2040" no no yes no yes
+row "ESP32" yes yes no yes yes
+row "RP2350" no no yes yes yes
+:::
+
+### Trees
+`:::tree` draws a hierarchy from an indented outline, two spaces a level, the root at the left (`down` on the first
+line puts it at the top). Who owns what in a Kubernetes Deployment:
+
+```
+:::tree Kubernetes Ownership
+Deployment
+  ReplicaSet\n(current)
+    Pod
+    Pod
+    Pod
+  ReplicaSet\n(previous, 0) [dash]
+:::
+```
+
+:::tree A Deployment's Ownership Chain
+Deployment
+  ReplicaSet\n(current)
+    Pod
+    Pod
+    Pod
+  ReplicaSet\n(previous, 0) [dash]
+:::
+
+### Panels
+A `panel` line in a `:::plot` starts another panel under the first, on the same x: a Bode plot's magnitude and phase,
+here a first-order low-pass:
+
+::::row
+```
+:::plot First-Order Low-Pass
+range 0.01 100
+log x
+fn "-10*log10(1+x**2)"
+ylabel "gain, dB"
+hline -3.01 "-3 DB"
+mark 1 "CORNER"
+panel
+fn "-degrees(arctan(x))"
+ylabel "phase, deg"
+ylim -95 5
+hline -45 "-45 DEG"
+xlabel "f / fc"
+:::
+```
+|||
+:::plot First-Order Low-Pass, Gain and Phase
+range 0.01 100
+log x
+fn "-10*log10(1+x**2)"
+ylabel "gain, dB"
+hline -3.01 "-3 DB"
+mark 1 "CORNER"
+panel
+fn "-degrees(arctan(x))"
+ylabel "phase, deg"
+ylim -95 5
+hline -45 "-45 DEG"
+xlabel "f / fc"
+:::
+::::
+
+### Callouts
+`:::callouts` names the parts of a picture: a leader from each point (fractions of the picture from its top left)
+to lettering in the margin on the nearer side. `gray` inverts a dark screen to ink.
+
+```
+:::callouts A Display Capture
+image ../kitchen-sink/screen.png gray
+at 0.33 0.22 "program number"
+at 0.15 0.52 "verb: what to do"
+at 0.53 0.45 "noun: what to do it to"
+at 0.03 0.69 "register 1"
+at 0.36 0.78 "register 2"
+at 0.64 0.69 "register 3"
+:::
+```
+
+:::callouts A Display Capture, Named
+image ../kitchen-sink/screen.png gray
+at 0.33 0.22 "program number"
+at 0.15 0.52 "verb: what to do"
+at 0.53 0.45 "noun: what to do it to"
+at 0.03 0.69 "register 1"
+at 0.36 0.78 "register 2"
+at 0.64 0.69 "register 3"
+:::
 
 ## Making a sheet
 
