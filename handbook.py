@@ -1063,7 +1063,8 @@ def scatter(spec, base=Path(".")):
             ax.scatter([x], [y], s=area, facecolor="white" if s is None else "#cfcfcf", edgecolor=INK, linewidth=0.7,
                        zorder=3)
             if label:
-                ax.annotate(label, xy=(x, y), xytext=(5, 3), textcoords="offset points", fontsize=5.4, zorder=4)
+                ax.annotate(label, xy=(x, y), xytext=(5, 3), textcoords="offset points", fontsize=5.4, zorder=4,
+                            bbox=dict(fc="white", ec="none", pad=0.3))      # over the fit line, not under it
         if "x" in log:
             ax.set_xscale("log")
         if "y" in log:
@@ -1237,7 +1238,8 @@ def treemap(spec):
            PDF 2255
            PY 79
        size W H                       (inches, on a line of its own; default 6.2 by 3)
-     the first level are framed heavy and named in their corner, the leaves lettered when they have room"""
+     the first level are framed heavy and named in their corner; a leaf is lettered with its value when it has
+     room, by name alone when only that fits, and left blank below that (its value is still in the source)"""
     size, items = (6.2, 3.0), []
     for l in spec.splitlines():
         if not l.strip() or l.strip().startswith("#"):
@@ -1317,6 +1319,9 @@ def treemap(spec):
                 elif cw > 0.32 and ch > 0.16:
                     ax.text(cx + cw / 2, cy + ch / 2, f"{it[1]}\n{total(it):g}", fontsize=5.2 if cw > 0.5 else 4.4,
                             ha="center", va="center", linespacing=1.05)
+                elif max(cw, ch) > len(it[1]) * 0.045 + 0.04 and min(cw, ch) > 0.07:   # the name alone, along it
+                    ax.text(cx + cw / 2, cy + ch / 2, it[1], fontsize=4.2, ha="center", va="center",
+                            rotation=90 if ch > cw else 0)
         draw(roots, 0, 0, W, H, 0)
         return svg(fig)
 
