@@ -1030,6 +1030,477 @@ stage "Python" 20
 stage "in sheets/" 5
 :::
 
+## Time, space and more data
+
+### Maps
+`:::map` draws GeoJSON or shapefile layers in ink: outlines, a hatched area, a route, points, a lat-lon graticule and
+a scale bar. `value` lines shade features by a number, keyed by a property: a choropleth with its scale below.
+Three Apollo splashdowns in the Pacific, over Natural Earth's land, hatched; the route is drawn straight, from the
+Apollo 11 splashdown to Pearl Harbor, where the recovery ship took the crew:
+
+```
+:::map Splashdowns
+layer data/pacific-land.geojson hatch
+extent -180 -150 4 28
+graticule 5
+point -165.02 8.13 "APOLLO 8" ring
+point -169.15 13.32 "APOLLO 11" star
+point -158.13 26.12 "APOLLO 15" ring
+route -169.15 13.32 -157.95 21.35 "TO PEARL HARBOR" dash
+scale 300
+:::
+```
+
+:::map Three Apollo Splashdowns North of the Equator (Route Schematic)
+layer data/pacific-land.geojson hatch
+extent -180 -150 4 28
+graticule 5
+point -165.02 8.13 "APOLLO 8" ring
+point -169.15 13.32 "APOLLO 11" star
+point -158.13 26.12 "APOLLO 15" ring
+route -169.15 13.32 -157.95 21.35 "TO PEARL HARBOR" dash
+scale 300
+:::
+
+The 48 contiguous states shaded by the year each joined the Union; `key=name` matches each `value` to a feature:
+
+```
+:::map Statehood
+layer data/us-states.geojson key=name
+value "Delaware" 1787
+value "Pennsylvania" 1787
+...
+:::
+```
+
+:::map The Contiguous States by Year of Statehood
+layer data/us-states.geojson key=name
+value "Delaware" 1787
+value "Pennsylvania" 1787
+value "New Jersey" 1787
+value "Georgia" 1788
+value "Connecticut" 1788
+value "Massachusetts" 1788
+value "Maryland" 1788
+value "South Carolina" 1788
+value "New Hampshire" 1788
+value "Virginia" 1788
+value "New York" 1788
+value "North Carolina" 1789
+value "Rhode Island" 1790
+value "Vermont" 1791
+value "Kentucky" 1792
+value "Tennessee" 1796
+value "Ohio" 1803
+value "Louisiana" 1812
+value "Indiana" 1816
+value "Mississippi" 1817
+value "Illinois" 1818
+value "Alabama" 1819
+value "Maine" 1820
+value "Missouri" 1821
+value "Arkansas" 1836
+value "Michigan" 1837
+value "Florida" 1845
+value "Texas" 1845
+value "Iowa" 1846
+value "Wisconsin" 1848
+value "California" 1850
+value "Minnesota" 1858
+value "Oregon" 1859
+value "Kansas" 1861
+value "West Virginia" 1863
+value "Nevada" 1864
+value "Nebraska" 1867
+value "Colorado" 1876
+value "North Dakota" 1889
+value "South Dakota" 1889
+value "Montana" 1889
+value "Washington" 1889
+value "Idaho" 1890
+value "Wyoming" 1890
+value "Utah" 1896
+value "Oklahoma" 1907
+value "New Mexico" 1912
+value "Arizona" 1912
+:::
+
+### Fields: contours, rasters and polar plots
+`:::contour` draws an exact field f(x, y) as lettered contour lines; `:::raster` sets a grid (a CSV, or the same kind
+of field) as gray with a scale; `:::polar` draws r(t), or a wind rose with `rose`. The potential of a charge pair,
+both ways, and a half-wave dipole's radiation pattern:
+
+::::row
+```
+:::contour Potential of a Dipole
+fn "1/hypot(x-1,y) - 1/hypot(x+1,y)"
+range -3 3 -2.2 2.2
+levels -2 -1 -0.5 -0.2 0.2 0.5 1 2
+point 1 0 "+Q"
+point -1 0 "-Q"
+:::
+
+:::raster The Same, as Gray
+fn "clip(1/hypot(x-1,y) - 1/hypot(x+1,y), -2, 2)"
+extent -3 3 -2.2 2.2
+unit "potential"
+:::
+```
+|||
+:::contour Potential of a Charge Pair, kQ = 1
+fn "1/hypot(x-1,y) - 1/hypot(x+1,y)"
+range -3 3 -2.2 2.2
+levels -2 -1 -0.5 -0.2 0.2 0.5 1 2
+point 1 0 "+Q"
+point -1 0 "-Q"
+:::
+
+:::raster The Same Field, Clipped at 2, as Gray
+fn "clip(1/hypot(x-1,y) - 1/hypot(x+1,y), -2, 2)"
+extent -3 3 -2.2 2.2
+unit "potential"
+size 3.4 2.2
+:::
+::::
+
+::::row
+```
+:::polar Half-Wave Dipole
+fn "abs(cos(pi/2*cos(t))/sin(t))" "E-PLANE"
+:::
+```
+`t` is the angle from the dipole's axis; a
+wind rose takes `rose N 12` or
+`rose 225 7` lines instead, north up.
+|||
+:::polar Half-Wave Dipole, E-Plane Field Pattern
+fn "abs(cos(pi/2*cos(t))/sin(t))" "E-PLANE"
+:::
+::::
+
+### Error bars, strips and cumulative curves
+`err=COLUMN` on a plot series draws error bars of that half-width. Rendering one `:::plot` curve with 10 to 100 000
+points, five runs each, mean and one standard deviation (10.28.2026): the count barely matters.
+
+::::row
+```
+:::plot Plot Time against Points
+csv data/plot-ms.csv
+x points "points on the curve"
+y ms "MEAN" dots err=sd
+log x
+ylabel "ms"
+ylim 0 85
+:::
+```
+|||
+:::plot Time to Draw One Plot against Its Points
+csv data/plot-ms.csv
+x points "points on the curve"
+y ms "MEAN" dots err=sd
+log x
+ylabel "ms"
+ylim 0 85
+:::
+::::
+
+`strip` sets every raw value over its box; `ecdf` draws each set as a cumulative curve, so any percentile reads
+straight off the y axis:
+
+::::row
+```
+:::dist Every Run
+data "report A" ... where=sheet:report-a
+data "report B" ...
+data "template" ...
+strip
+unit "ms"
+:::
+```
+|||
+:::dist Every Run, over Its Box
+data "report A" data/render-ms.csv ms where=sheet:report-a
+data "report B" data/render-ms.csv ms where=sheet:report-b
+data "template" data/render-ms.csv ms where=sheet:template
+strip
+unit "ms"
+:::
+::::
+
+::::row
+```
+:::dist Cumulative
+data ...
+ecdf
+unit "ms"
+mark 371 "P95, ALL"
+:::
+```
+|||
+:::dist Render Time, Cumulative by Sheet
+data "report A" data/render-ms.csv ms where=sheet:report-a
+data "report B" data/render-ms.csv ms where=sheet:report-b
+data "template" data/render-ms.csv ms where=sheet:template
+ecdf
+unit "ms"
+mark 371 "P95, ALL"
+:::
+::::
+
+### Dot plots, slopes and parallel axes
+`dots` on `:::bars` sets a dot on a stem in place of a bar; `:::slope` runs each thing from one time to another;
+`:::parallel` gives each quantity its own axis.
+
+::::row
+```
+:::bars Median and P95
+series "P50" "P95"
+dots
+horizontal
+unit "ms"
+bar "report A" 359 376
+bar "report B" 214 239
+bar "template" 221 256
+:::
+```
+|||
+:::bars Render Time, Median and 95th Percentile, ms
+series "P50" "P95"
+dots
+horizontal
+unit "ms"
+bar "report A" 359 376
+bar "report B" 214 239
+bar "template" 221 256
+:::
+::::
+
+::::row
+```
+:::slope Directory Sizes
+heads "v1.0" "v2.0"
+unit "KB"
+log
+item "src" 420 2600
+item "docs" 1800 1900
+item "assets" 900 880
+item "tests" 64 310
+item "scripts" 40 40
+:::
+```
+|||
+:::slope Directory Sizes in an Example Repository, KB
+heads "v1.0" "v2.0"
+unit "KB"
+log
+item "src" 420 2600
+item "docs" 1800 1900
+item "assets" 900 880
+item "tests" 64 310
+item "scripts" 40 40
+:::
+::::
+
+```
+:::parallel Five Microcontrollers
+axes "MHz" "SRAM, KB" "GPIO" "cores"
+item "ATmega328P" 20 2 23 1
+item "STM32F103C8" 72 20 37 1
+item "RP2040" 133 264 30 2
+item "ESP32" 240 520 34 2
+item "RP2350" 150 520 30 2
+:::
+```
+
+:::parallel Five Microcontrollers, Four Measures (RP2350A Package for GPIO)
+axes "MHz" "SRAM, KB" "GPIO" "cores"
+item "ATmega328P" 20 2 23 1
+item "STM32F103C8" 72 20 37 1
+item "RP2040" 133 264 30 2
+item "ESP32" 240 520 34 2
+item "RP2350" 150 520 30 2
+:::
+
+### Waterfalls and waffles
+`:::waterfall` walks a running total: `start`, then `step +V` or `-V` (falls hatched), and `total`. A spacecraft
+battery over one orbit (an example budget). `:::waffle` sets shares on a 10 by 10 grid, a square a percent:
+the files of an example repository by kind.
+
+::::row
+```
+:::waterfall Battery
+unit "Wh"
+start "Start" 100
+step "Sunlit" +35
+step "Radio" -20
+step "Eclipse" -30
+step "Payload" -25
+total "End"
+:::
+```
+|||
+:::waterfall Battery over One Orbit, Wh (Example)
+unit "Wh"
+start "Start" 100
+step "Sunlit" +35
+step "Radio" -20
+step "Eclipse" -30
+step "Payload" -25
+total "End"
+:::
+::::
+
+```
+:::waffle Files by Kind
+part "Figures" 34
+part "Code" 26
+part "Text" 18
+part "Data" 9
+part "Other" 13
+:::
+```
+
+:::waffle Files in an Example Repository by Kind, Percent
+part "Figures" 34
+part "Code" 26
+part "Text" 18
+part "Data" 9
+part "Other" 13
+:::
+
+### Networks
+`:::network` lays out a graph that has no natural rows and columns (dependencies, a mesh, who talks to whom) by a
+spring model, the same every time. What the sheet tools import:
+
+```
+:::network Imports
+link sheet.py handbook.py arrow
+link sheet.py yaml arrow
+link sheet.py matplotlib arrow
+link handbook.py matplotlib arrow
+link handbook.py numpy arrow
+link sheet.py chrome "SUBPROCESS" dash arrow
+link chrome pdf arrow
+link matplotlib numpy arrow
+:::
+```
+
+:::network What the Sheet Tools Use
+link sheet.py handbook.py arrow
+link sheet.py yaml arrow
+link sheet.py matplotlib arrow
+link handbook.py matplotlib arrow
+link handbook.py numpy arrow
+link sheet.py chrome "SUBPROCESS" dash arrow
+link chrome pdf arrow
+link matplotlib numpy arrow
+:::
+
+### Swimlanes and Gantt charts
+`lane "OWNER" ROW` on a `:::diagram` bands a row for whoever does that work; `milestone` and `after` on a
+`:::timeline` add dates without length and dependencies. The review of a sheet, by owner, and an example plan for
+a format's first three days:
+
+```
+:::diagram Who Does What in a Review
+grid 1.5 0.75
+lane "AGENT" 0
+lane "WRITER" 1
+lane "CHECKER" 2
+lane "OWNER" 3
+node rep "REPORT" 0 0 round
+node draft "DRAFT\nSHEET" 1 1
+node check "FACTS\nRIGHT?" 2 2 diamond w=0.85 h=0.95
+node final "FINAL\nPDF" 3 1
+node read "READ,\nPRINT" 4 3 round
+edge rep draft
+edge draft check
+edge check draft "NO: CORRECT" bend=-0.5
+edge check final "YES"
+edge final read
+:::
+```
+
+:::diagram Who Does What in a Review
+grid 1.5 0.75
+lane "AGENT" 0
+lane "WRITER" 1
+lane "CHECKER" 2
+lane "OWNER" 3
+node rep "REPORT" 0 0 round
+node draft "DRAFT\nSHEET" 1 1
+node check "FACTS\nRIGHT?" 2 2 diamond w=0.85 h=0.95
+node final "FINAL\nPDF" 3 1
+node read "READ,\nPRINT" 4 3 round
+edge rep draft
+edge draft check
+edge check draft "NO: CORRECT" bend=-0.5
+edge check final "YES"
+edge final read
+:::
+
+```
+:::timeline A Format, the First Days
+axis "days from 10.26.2026" 0 3 ticks=1
+bar "Renderer" 0 0.6 hatch
+bar "First sheet" 0.4 1 open
+bar "Complete system" 1 1.8 hatch
+milestone "Complete system" 1.9 "PUBLIC"
+bar "More figures" 2 2.5 hatch
+milestone "More figures" 2.6 "FIRST UPDATE"
+bar "Catalog" 2.6 3 open
+after "Renderer" "Complete system"
+after "Complete system" "More figures"
+after "More figures" "Catalog"
+:::
+```
+
+:::timeline A Format, the First Three Days (Example Plan)
+axis "days from 10.26.2026" 0 3 ticks=1
+bar "Renderer" 0 0.6 hatch
+bar "First sheet" 0.4 1 open
+bar "Complete system" 1 1.8 hatch
+milestone "Complete system" 1.9 "PUBLIC"
+bar "More figures" 2 2.5 hatch
+milestone "More figures" 2.6 "FIRST UPDATE"
+bar "Catalog" 2.6 3 open
+after "Renderer" "Complete system"
+after "Complete system" "More figures"
+after "More figures" "Catalog"
+:::
+
+### Small multiples and sparklines
+A `::::row` takes any number of columns: the same small figure repeated, one condition each, read across. A
+`[[spark 3 5 4 8]]` sparkline sets a word-sized line in prose or a table cell, its last value dotted.
+
+::::row
+:::dist report A
+hist data/render-ms.csv ms where=sheet:report-a bins=10
+unit "ms"
+size 2.2 1.6
+:::
+|||
+:::dist report B
+hist data/render-ms.csv ms where=sheet:report-b bins=10
+unit "ms"
+size 2.2 1.6
+:::
+|||
+:::dist template
+hist data/render-ms.csv ms where=sheet:template bins=10
+unit "ms"
+size 2.2 1.6
+:::
+::::
+
+:::table Render Time, the First Twelve Runs
+| Sheet | Runs 1 to 12 | Median | P95 |
+|---|---|---|---|
+| report A | [[spark 436 348 335 358 332 358 332 361 362 337 364 338]] | 359 ms | 376 ms |
+| report B | [[spark 232 212 215 210 249 209 211 212 242 209 213 214]] | 214 ms | 239 ms |
+| template | [[spark 222 242 215 244 218 217 246 219 252 216 218 256]] | 221 ms | 256 ms |
+:::
+
 ## Which figure
 
 :::table Choosing a Figure
@@ -1060,6 +1531,21 @@ stage "in sheets/" 5
 | overlap between groups | `:::venn` (three sets at most) | |
 | the parts of a thing you can photograph | `:::callouts` | a long caption |
 | a procedure | `:::checklist` | a paragraph of steps |
+| places, routes, a region's values | `:::map`, `value` lines for a choropleth | a table of place names |
+| a field over a plane | `:::contour`, or `:::raster` for a dense grid | |
+| direction: antennas, winds | `:::polar`, `rose` for a wind rose | a bar chart of compass points |
+| measurements with uncertainty | `:::plot` with `err=` | bare points |
+| every value, or any percentile | `:::dist` with `strip`, or `ecdf` | a mean alone |
+| many categories, two values each | `:::bars dots` | grouped bars |
+| the same things at two times | `:::slope` | two tables |
+| many quantities for a few things | `:::parallel` | a radar chart |
+| a running total, rise by fall | `:::waterfall` | stacked bars |
+| a few shares, counted | `:::waffle` | a pie |
+| a graph with no natural layout | `:::network` | a hand-placed diagram |
+| who does which step | `:::diagram` with `lane` | a flowchart without owners |
+| a plan with dependencies | `:::timeline` with `milestone`, `after` | a list of dates |
+| one figure per condition | a `::::row` of three or more | one crowded figure |
+| a trend beside a number | `[[spark ...]]` in the cell | a column of numbers |
 :::
 
 Anything that must move, take input or recalculate (a planner with sliders, a live simulation) is not a sheet: it
