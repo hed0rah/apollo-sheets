@@ -378,7 +378,11 @@ def plot(spec, base=Path(".")):
                     ax.text(at, 1.0, label, fontsize=5.4, ha="center", va="bottom", transform=ax.get_xaxis_transform())
             for at, label in pnl["hlines"]:
                 ax.axhline(at, color=INK, lw=0.6, ls=(0, (3, 2)))
-                ax.text(0.99, at, label, fontsize=5.4, ha="right", va="bottom", transform=ax.get_yaxis_transform())
+                # letter it at the end where the curves stand farthest from the line
+                ends = [(l.get_ydata()[0], l.get_ydata()[-1]) for l in ax.get_lines() if len(l.get_ydata()) > 1]
+                left = sum(abs(a - at) for a, _ in ends) > sum(abs(b - at) for _, b in ends)
+                ax.text(0.01 if left else 0.99, at, label, fontsize=5.4, ha="left" if left else "right", va="bottom",
+                        transform=ax.get_yaxis_transform())
             if logx:
                 ax.set_xscale("log")
             if pnl["logy"]:
@@ -595,8 +599,9 @@ def stack(spec):
                                    hatch="//////" if l["fill"] == "hatch" else None,
                                    ls=(0, (4, 2)) if l["fill"] == "dash" else "-"))
             ym = (y0 + y1) / 2
-            txt = dict(ha="center", va="center", color="white" if solid else INK,
-                       bbox=None if l["fill"] != "hatch" else dict(fc="white", ec="none", pad=1))
+            if l["fill"] == "hatch":                 # a clear plate for the lettering, so the hatch stays round it
+                ax.add_patch(Rectangle((width * 0.2, ym - 0.14), width * 0.6, 0.28, fc="white", ec="none"))
+            txt = dict(ha="center", va="center", color="white" if solid else INK)
             if l["note"]:
                 ax.text(width / 2, ym + 0.06, l["label"], fontsize=6.4, **txt)
                 ax.text(width / 2, ym - 0.08, l["note"], fontsize=5.2, **txt)
