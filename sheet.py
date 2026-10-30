@@ -118,7 +118,7 @@ def math(tex, display=False):
         clean = re.sub(r"\\sqrt\s+(\w)", r"\\sqrt{\1}", clean)
         buf = io.StringIO()
         try:
-            with plt.rc_context({"mathtext.fontset": "stix", "svg.fonttype": "path"}):
+            with plt.rc_context({"mathtext.fontset": "stix", "svg.fonttype": "path", "savefig.transparent": True}):
                 depth = mathtext.math_to_image(f"${clean}$", buf, prop=FontProperties(size=11 if display else 9.6),
                                                dpi=72, format="svg")
             svg = buf.getvalue()
