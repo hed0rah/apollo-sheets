@@ -452,14 +452,71 @@ def mdy(v):
 
 # paper themes, picked by the front matter's paper: field. ink and figures stay black on every light paper
 THEMES = {
-    "white": dict(paper="#FFFFFF", ink="#111", accent=None, tabtext=None, grid=None, invert=False),
+    "white": dict(paper="#FFFFFF", ink="#111", accent=None, tabtext=None, grid=None, dots=False, invert=False),
     "cream": dict(paper="#F3EBD3"),
-    "film": dict(paper="#E3E9EB", accent="#E0531F", tabtext="#FFFFFF", grid="rgba(40,110,140,0.11)"),
+    "film": dict(paper="#E3E9EB", accent="#E0531F", tabtext="#FFFFFF", dots=True),
     "phosphor": dict(paper="#E2EBE3", accent="#1E6B47", tabtext="#FFFFFF", grid="rgba(30,107,71,0.11)"),
     "mylar": dict(paper="#DCE5EE", accent="#1D4ED8", tabtext="#FFFFFF", grid="rgba(29,78,216,0.10)"),
     "crt": dict(paper="#121619", ink="#CDE2D2", accent="#F2A33A", tabtext="#121619", grid="rgba(205,226,210,0.05)",
                 invert=True),
 }
+
+
+def halftone_tile(dpi=2400, radius=0.009, lpi=150.0, alpha=0.17):
+    """one quarter-inch background tile as a PNG data URI, a grid dot at its centre printed as a press would: cyan,
+    magenta and black screens at 15, 75 and 45 degrees, each cell's dot sized by a soft dot's tone, so under a loupe
+    it shows the rosette of offset lithography. A raster at 2400 dpi, because Chrome flattens SVG backgrounds and
+    patterns to screen resolution; this way the PDF holds one small image, sharp to the loupe. radius in inches"""
+    import base64
+    import math
+    import numpy as np
+    n = int(dpi / 4)
+    yy, xx = np.mgrid[0:n, 0:n] / dpi - 0.125                 # inches from the tile's centre
+    rgba = np.zeros((n, n, 4))
+    cell = 1 / lpi
+    for col, ang, k in (((0.0, 0.64, 0.85), 15, 0.6), ((0.9, 0.0, 0.49), 75, 0.14), ((0.14, 0.12, 0.13), 45, 0.32)):
+        a = math.radians(ang)
+        u, v = xx * math.cos(a) + yy * math.sin(a), -xx * math.sin(a) + yy * math.cos(a)
+        cu, cv = (np.round(u / cell)) * cell, (np.round(v / cell)) * cell   # the screen cell each pixel sits in
+        cx, cy = cu * math.cos(a) - cv * math.sin(a), cu * math.sin(a) + cv * math.cos(a)
+        tone = k * np.exp(-(cx ** 2 + cy ** 2) / (2 * (radius / 1.6) ** 2))
+        r = cell * np.sqrt(tone / math.pi)                    # dot area = tone x cell area
+        on = (np.hypot(u - cu, v - cv) <= r) & (tone > 0.02)
+        for c in range(3):                                    # a later ink lands on top, as on the press
+            rgba[..., c] = np.where(on, col[c], rgba[..., c])
+        rgba[..., 3] = np.where(on, np.maximum(rgba[..., 3], alpha), rgba[..., 3])
+    buf = io.BytesIO()
+    plt.imsave(buf, rgba, format="png")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def press_mark():
+    """a press sheet's control mark, tiny, in the footer band: a registration target, the four process inks as a
+    colour bar, and the screen the dot grid was "printed" with"""
+    k = "#231F20"
+    target = (f'<circle cx="6" cy="6" r="3.2" fill="none" stroke="{k}" stroke-width="0.35"/>'
+              f'<path d="M6 0.6V11.4M0.6 6H11.4" stroke="{k}" stroke-width="0.35"/>'
+              f'<circle cx="6" cy="6" r="1.2" fill="{k}"/>')
+    bar = "".join(f'<rect x="{16 + i * 6.5}" y="3" width="5" height="6" fill="{c}"/>'
+                  for i, c in enumerate(("#00A3DA", "#E5007E", "#FFED00", k)))
+    text = (f'<text x="44" y="7.4" font-family="Nimbus Sans Narrow, Liberation Sans Narrow, sans-serif" font-size="4.2" letter-spacing="0.3" fill="{k}">'
+            '150 LPI  C15 M75 K45</text>')
+    return _svg_uri(f'<svg viewBox="0 0 110 12" width="110" height="12" xmlns="http://www.w3.org/2000/svg">'
+                    f'<g opacity="0.55">{target}{bar}{text}</g></svg>')
+
+
+def crop_mark(corner):
+    """a hairline crop mark for one page corner, like a press sheet before trimming"""
+    k = "#231F20"
+    x0, y0 = (0, 0) if corner in ("tl", "bl") else (16, 0)
+    h = {"tl": "M4 12H14M12 4V14", "tr": "M2 12H12M4 4V14", "bl": "M4 4H14M12 2V12", "br": "M2 4H12M4 2V12"}[corner]
+    return _svg_uri(f'<svg viewBox="0 0 16 16" width="16" height="16" xmlns="http://www.w3.org/2000/svg">'
+                    f'<path d="{h}" stroke="{k}" stroke-width="0.3" opacity="0.5" fill="none"/></svg>')
+
+
+def _svg_uri(svg):
+    import base64
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
 
 
 def theme(m):
@@ -474,6 +531,16 @@ def css(m):
         g = t["grid"]
         extra += (f"html {{ background-image: linear-gradient({g} 1px, transparent 1px), "
                   f"linear-gradient(90deg, {g} 1px, transparent 1px); background-size: 0.25in 0.25in; }}\n")
+    if t["dots"]:                                  # an extremely light dot grid, each dot a halftone under a loupe
+        extra += f'html {{ background-image: url("{halftone_tile()}"); background-size: 0.25in 0.25in; }}\n'
+        extra += (f'@page {{ @top-right {{ content: url("{press_mark()}"); vertical-align: bottom; text-align: right; '
+                  f'padding-bottom: 0.235in; padding-right: 0.5in; }} }}\n')
+        extra += ".edgetab { clip-path: polygon(0.12in 0, 100% 0, 100% 100%, 0 100%, 0 0.12in); }\n"   # one chamfer
+        extra += ('.title::after { content: ""; display: block; width: 0.4in; height: 1.5pt; margin: 0.05in auto 0; '
+                  'background: var(--accent); }\n')
+        for c, box in (("tl", "top-left-corner"), ("tr", "top-right-corner"), ("bl", "bottom-left-corner"),
+                       ("br", "bottom-right-corner")):
+            extra += f'@page {{ @{box} {{ content: url("{crop_mark(c)}"); }} }}\n'
     if t["invert"]:                                # a dark page: black-ink figures and equations print light
         extra += "main svg, main img { filter: invert(1) hue-rotate(180deg); }\n"
     footer = f"Mission {m.get('mission', '')}  Basic Date {mdy(m.get('date', ''))}" \
