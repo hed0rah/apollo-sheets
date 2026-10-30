@@ -533,8 +533,8 @@ def css(m):
                   f"linear-gradient(90deg, {g} 1px, transparent 1px); background-size: 0.25in 0.25in; }}\n")
     if t["dots"]:                                  # an extremely light dot grid, each dot a halftone under a loupe
         extra += f'html {{ background-image: url("{halftone_tile()}"); background-size: 0.25in 0.25in; }}\n'
-        extra += (f'@page {{ @top-right {{ content: url("{press_mark()}"); vertical-align: bottom; text-align: right; '
-                  f'padding-bottom: 0.235in; padding-right: 0.5in; }} }}\n')
+        extra += (f'@page {{ @top-right {{ content: url("{press_mark()}"); vertical-align: top; text-align: right; '
+                  f'padding-top: 0.34in; padding-right: 0.5in; }} }}\n')      # above the header, clear of a long title
         extra += ".edgetab { clip-path: polygon(0.12in 0, 100% 0, 100% 100%, 0 100%, 0 0.12in); }\n"   # one chamfer
         extra += ('.title::after { content: ""; display: block; width: 0.4in; height: 1.5pt; margin: 0.05in auto 0; '
                   'background: var(--accent); }\n')
