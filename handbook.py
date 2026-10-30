@@ -899,10 +899,12 @@ def bars(spec):
 
 
 def _endlabel(ax, text, v, at, horiz):
-    """a value just past the end of its bar"""
-    xy, off = ((v, at), (3, 0)) if horiz else ((at, v), (0, 2))
+    """a value just past the end of its bar, on the far side from zero so a negative bar's label sits outside it"""
+    sgn = -1 if v < 0 else 1
+    xy, off = ((v, at), (3 * sgn, 0)) if horiz else ((at, v), (0, 2 * sgn))
     ax.annotate(text, xy=xy, xytext=off, textcoords="offset points", fontsize=5.6,
-                ha="left" if horiz else "center", va="center" if horiz else "bottom")
+                ha=("left" if sgn > 0 else "right") if horiz else "center",
+                va="center" if horiz else ("bottom" if sgn > 0 else "top"))
 
 
 # -- matrix ----------------------------------------------------------------------------------------------------------
