@@ -17,7 +17,8 @@ the ::: blocks below add the handbook furniture.
   date: 10.26.2026                     (MM.DD.YYYY; ISO is accepted and printed that way)
   change: 10.26.2026                   (optional)
   by: review sheet, from the team notes (optional, under the title)
-  paper: cream                         (optional: cream page for screen; default white, for printing)
+  paper: film                          (optional: white, the default, for printing; cream; film,
+                                       phosphor or mylar, cool papers with a grid; crt, dark, for screens)
   ---
 
   ## Functional description            2.1.1  FUNCTIONAL DESCRIPTION.
@@ -449,12 +450,37 @@ def mdy(v):
     return f"{m[2]}.{m[3]}.{m[1]}" if m else str(v)
 
 
+# paper themes, picked by the front matter's paper: field. ink and figures stay black on every light paper
+THEMES = {
+    "white": dict(paper="#FFFFFF", ink="#111", accent=None, tabtext=None, grid=None, invert=False),
+    "cream": dict(paper="#F3EBD3"),
+    "film": dict(paper="#E3E9EB", accent="#E0531F", tabtext="#FFFFFF", grid="rgba(40,110,140,0.11)"),
+    "phosphor": dict(paper="#E2EBE3", accent="#1E6B47", tabtext="#FFFFFF", grid="rgba(30,107,71,0.11)"),
+    "mylar": dict(paper="#DCE5EE", accent="#1D4ED8", tabtext="#FFFFFF", grid="rgba(29,78,216,0.10)"),
+    "crt": dict(paper="#121619", ink="#CDE2D2", accent="#F2A33A", tabtext="#121619", grid="rgba(205,226,210,0.05)",
+                invert=True),
+}
+
+
+def theme(m):
+    return {**THEMES["white"], **THEMES.get(str(m.get("paper", "white")), {})}
+
+
 def css(m):
     q = lambda s: '"' + str(s).replace('"', "'") + '"'
-    paper = "#F3EBD3" if m.get("paper") == "cream" else "#FFFFFF"
+    t = theme(m)
+    extra = ""
+    if t["grid"]:                                  # a faint quarter-inch engineering grid under the text
+        g = t["grid"]
+        extra += (f"html {{ background-image: linear-gradient({g} 1px, transparent 1px), "
+                  f"linear-gradient(90deg, {g} 1px, transparent 1px); background-size: 0.25in 0.25in; }}\n")
+    if t["invert"]:                                # a dark page: black-ink figures and equations print light
+        extra += "main svg, main img { filter: invert(1) hue-rotate(180deg); }\n"
     footer = f"Mission {m.get('mission', '')}  Basic Date {mdy(m.get('date', ''))}" \
              f"  Change Date {mdy(m.get('change', ''))}"
-    return (HERE / "sheet.css").read_text().replace("{FONTS}", FONTS).replace("{PAPER}", paper) \
+    return (HERE / "sheet.css").read_text().replace("{FONTS}", FONTS).replace("{PAPER}", t["paper"]) \
+        .replace("{INK}", t["ink"]).replace("{ACCENT}", t["accent"] or t["ink"]) \
+        .replace("{TABTEXT}", t["tabtext"] or t["paper"]).replace("{THEME}", extra) \
         .replace("{DOC}", q(m.get("doc", ""))) \
         .replace("{HANDBOOK}", q(str(m.get("handbook", "OPERATIONS HANDBOOK")).upper())) \
         .replace("{SYSTEM}", q(str(m.get("system", m.get("title", ""))).upper())) \
@@ -472,6 +498,8 @@ def render(src_path, overrides=()):
     if meta.get("by"):
         head += f'<div class="by">{inline(str(meta["by"]))}</div>'
     title = html.escape(str(meta.get("doc") or meta.get("title", "")))       # the PDF's title, not sheet.html
+    if not theme(sheet.m)["invert"]:                 # a figure's white fills take the paper, so boxes sit on it
+        content = content.replace("fill: #ffffff", "fill: var(--paper)").replace('fill="#ffffff"', 'fill="var(--paper)"')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>{title}</title><style>{css(sheet.m)}</style></head><body>'
             f'<div class="edgetab">{tab}</div>{head}<main>{content}</main></body></html>')
 
