@@ -16,7 +16,7 @@ heading's slug, or to fig-N.M / tab-N.M, and every such link is listed in the ra
 status (the pill, Draft by default), abstract (a paragraph above the first chapter), eyebrow (over the title).
 A heading may carry its own anchor, ## The gate {#gate}; sheet.py leaves it off the paper.
 
-The page shell is the Interactive Whitepaper template, from SHEET_TEMPLATE or the house-styles skill's spec/.
+The page shell is the Interactive Whitepaper template, web-template.html beside this file, or SHEET_TEMPLATE.
 """
 import argparse
 import base64
@@ -28,7 +28,7 @@ from pathlib import Path
 import handbook
 import sheet
 
-TEMPLATE = Path(os.environ.get("SHEET_TEMPLATE", Path.home() / ".claude/skills/house-styles/spec/template.html"))
+TEMPLATE = Path(os.environ.get("SHEET_TEMPLATE", Path(__file__).resolve().parent / "web-template.html"))
 handbook.STYLE["svg.fonttype"] = "path"          # lettering as outlines: exact, and nothing for the page to fetch
 
 # the template is light only; dark tokens as in the NERV pages, plus what this renderer adds

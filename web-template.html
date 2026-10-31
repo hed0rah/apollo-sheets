@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Append-Only Event Ledger -- Design Specification</title>
+<style>
+/* ============================================================================
+   SPEC house style -- an editorial, print-friendly systems specification.
+   Calm and rigorous, not a dashboard. Georgia longform paired with system-sans
+   apparatus (labels, tables, controls) and a monospace for diagrams and code.
+   One structural hue (slate blue); teal and orange are branding-nod section
+   accents; green/amber/red are reserved for status only. Deliberately a single
+   light "paper" look -- a spec is light -- so every colour is painted
+   explicitly and no webfont is fetched (Georgia and the system stacks are
+   resilient and print-faithful).
+   ============================================================================ */
+:root{
+  --canvas:#E6E8EB;          /* light grey desk the paper sits on */
+  --paper:#FDFDFC;           /* bright, barely-warm white page (change per use) */
+  --ink:#20252A;             /* near-black, faintly warm */
+  --ink-2:#4B545D;           /* secondary text */
+  --ink-3:#79838D;           /* muted labels, captions */
+  --rule:#E7E5DE;            /* hairline rules on the paper */
+  --rule-2:#CDD1D6;          /* structural rules */
+  --slate:#3E5A73;           /* the one structural hue */
+  --slate-2:#5B7288;
+  --slate-soft:#EAEFF4;      /* slate wash for the active TOC item, quiet fills */
+  --teal:#2C776D;            /* branding nod */
+  --orange:#B15A2C;          /* branding nod */
+  --ok:#3F7A48;              /* implemented / pass */
+  --warn:#98671C;            /* warning / partial */
+  --crit:#A5382F;            /* critical / fail */
+  --code-bg:#F2F3F1;         /* soft neutral code panel, no beige */
+  --code-ink:#2A3035;
+  --kw:#3E5A73; --str:#3F7A48; --num:#98671C; --cm:#8A8578; --fn:#B15A2C;
+  --serif:Georgia,"Iowan Old Style","Palatino Linotype","Book Antiqua",serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --measure:70rem;          /* the paper: wide, web-optimised; dense blocks fill it */
+  --prose:62rem;            /* long-form prose is reined in a touch for legibility */
+  --rail:16rem;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--canvas);color:var(--ink);
+  font-family:var(--serif);font-size:17px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* skip link ---------------------------------------------------------------- */
+.skip{position:absolute;left:-999px;top:0;background:var(--ink);color:#fff;
+  padding:.5rem .9rem;font-family:var(--sans);font-size:.8rem;z-index:50;border-radius:0 0 3px 0}
+.skip:focus{left:0}
+
+/* layout: sticky TOC rail + centred paper column --------------------------- */
+.doc{
+  display:grid;
+  grid-template-columns:var(--rail) minmax(0,var(--measure));
+  gap:4rem;justify-content:center;align-items:start;
+  padding:2.5rem 2rem 6rem;
+}
+
+/* --- the rail ------------------------------------------------------------- */
+.rail{position:sticky;top:1.5rem;font-family:var(--sans);align-self:start}
+.rail .doc-id{font-size:.72rem;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 1rem}
+.rail nav ol{list-style:none;margin:0;padding:0;counter-reset:toc}
+.rail nav a{
+  display:block;text-decoration:none;color:var(--ink-2);
+  font-size:.92rem;line-height:1.4;padding:.32rem 0 .32rem .85rem;
+  border-left:2px solid var(--rule);transition:color .15s,border-color .15s;
+}
+.rail nav a .n{color:var(--ink-3);font-variant-numeric:tabular-nums;margin-right:.45rem}
+.rail nav a:hover{color:var(--ink)}
+.rail nav a[aria-current="true"]{color:var(--slate);border-left-color:var(--slate);font-weight:600}
+.rail nav .sub a{padding-left:1.8rem;font-size:.84rem;color:var(--ink-3)}
+.rail nav .sub a[aria-current="true"]{color:var(--slate)}
+/* rail references: internal cross-refs and external citations, under the TOC */
+.rail-refs{margin-top:1.5rem;padding-top:1.1rem;border-top:1px solid var(--rule)}
+.rail-refs .grp{margin-bottom:1rem}
+.rail-refs .grp:last-child{margin-bottom:0}
+.rail-refs .glbl{font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 .55rem}
+.rail-refs ul{list-style:none;margin:0;padding:0}
+.rail-refs li{margin:.32rem 0}
+.rail-refs a{display:flex;gap:.45rem;text-decoration:none;color:var(--ink-2);
+  font-size:.84rem;line-height:1.35;transition:color .15s}
+.rail-refs a:hover{color:var(--ink)}
+.rail-refs .internal a::before{content:"\00a7";color:var(--slate);flex:none;font-weight:600}
+.rail-refs .external a::before{content:"\2197";color:var(--ink-3);flex:none;font-size:.7rem;line-height:1.6}
+.rail-refs .external a:hover::before{color:var(--teal)}
+.rail-refs .cnum{color:var(--ink-3);font-variant-numeric:tabular-nums;flex:none}
+.rail .rail-foot{margin-top:1.5rem;padding-top:1.2rem;border-top:1px solid var(--rule)}
+.rail-foot .stat-row{display:flex;align-items:center;gap:.55rem;margin-bottom:.75rem}
+.rail-foot .stat-row .k{font-size:.66rem;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+.rail-foot p{font-size:.78rem;line-height:1.6;color:var(--ink-3);margin:0;max-width:none}
+
+/* --- the paper ------------------------------------------------------------ */
+.paper{
+  background:var(--paper);
+  border:1px solid var(--rule);
+  box-shadow:0 1px 2px rgba(30,40,50,.05),0 8px 24px -18px rgba(30,40,50,.25);
+  padding:3.5rem clamp(1.5rem,5vw,4rem) 4rem;
+  counter-reset:chap;
+  max-width:100%;
+}
+
+/* cover / masthead --------------------------------------------------------- */
+.cover{border-bottom:2px solid var(--ink);padding-bottom:1.6rem;margin-bottom:2rem}
+.eyebrow{font-family:var(--sans);font-size:.68rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--slate);margin:0 0 .9rem;font-weight:600}
+.cover h1{font-size:clamp(1.9rem,4.4vw,2.7rem);line-height:1.12;font-weight:400;
+  letter-spacing:-.01em;margin:0;text-wrap:balance}
+.cover .sub{font-size:1.12rem;color:var(--ink-2);margin:.7rem 0 0;font-style:italic;max-width:34rem}
+
+/* metadata grid (sans apparatus) ------------------------------------------ */
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));
+  gap:.1rem 1.5rem;margin:1.6rem 0 0;font-family:var(--sans)}
+.meta div{padding:.35rem 0;border-top:1px solid var(--rule)}
+.meta dt{font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0}
+.meta dd{font-size:.86rem;margin:.15rem 0 0;color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* status pill -------------------------------------------------------------- */
+.pill{display:inline-block;font-family:var(--sans);font-size:.66rem;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;padding:.12rem .45rem;border-radius:2px;
+  border:1px solid currentColor;line-height:1.4}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.crit{color:var(--crit)}
+.pill.slate{color:var(--slate)} .pill.draft{color:var(--ink-3)}
+
+/* abstract ----------------------------------------------------------------- */
+.abstract{font-size:.96rem;color:var(--ink-2);margin:2rem 0;padding-left:1.1rem;
+  border-left:2px solid var(--slate)}
+.abstract .lbl{font-family:var(--sans);font-size:.64rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--slate);display:block;margin-bottom:.5rem;font-weight:600}
+.abstract p{margin:.5rem 0 0}
+
+/* chapters and sections (auto-numbered) ------------------------------------ */
+.chapter{margin-top:3.2rem}
+.chapter>h2{counter-increment:chap;counter-reset:sec;
+  font-size:1.5rem;font-weight:600;line-height:1.2;margin:0 0 .3rem;
+  padding-bottom:.5rem;border-bottom:1px solid var(--rule-2)}
+.chapter>h2::before{content:counter(chap) "\00a0\00a0";color:var(--slate);
+  font-family:var(--sans);font-weight:600;font-size:1.15rem}
+h3{counter-increment:sec;font-size:1.06rem;font-weight:600;margin:2rem 0 .5rem;letter-spacing:.005em}
+h3::before{content:counter(chap) "." counter(sec) "\00a0\00a0";
+  color:var(--ink-3);font-family:var(--sans);font-weight:500;font-size:.85rem}
+h4{font-family:var(--sans);font-size:.72rem;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);margin:1.6rem 0 .5rem}
+p{margin:0 0 1rem;max-width:var(--prose)}
+a.ref{color:var(--slate);text-decoration:none;border-bottom:1px solid var(--rule-2)}
+a.ref:hover{border-bottom-color:var(--slate)}
+sup.cite{font-family:var(--sans);font-size:.7rem;color:var(--slate);font-weight:600}
+sup.cite a{color:inherit;text-decoration:none}
+em{font-style:italic}
+strong{font-weight:600}
+code{font-family:var(--mono);font-size:.82em;background:var(--code-bg);
+  padding:.05rem .3rem;border-radius:2px;color:var(--code-ink)}
+
+/* editorial columns -- top rule only, never a boxed panel ------------------ */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1.6rem 2rem;margin:1.4rem 0}
+.col{border-top:2px solid var(--slate);padding-top:.7rem}
+.col.teal{border-top-color:var(--teal)} .col.orange{border-top-color:var(--orange)}
+.col .lbl{font-family:var(--sans);font-size:.66rem;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 .4rem}
+.col p{font-size:.9rem;margin:0 0 .6rem}
+.col .lbl.s-slate{color:var(--slate)} .col .lbl.s-teal{color:var(--teal)} .col .lbl.s-orange{color:var(--orange)}
+
+/* note -- editorial aside, thin left rule, not a box ----------------------- */
+.note{margin:1.3rem 0;padding-left:1rem;border-left:2px solid var(--rule-2);
+  font-size:.9rem;color:var(--ink-2)}
+.note.warn{border-left-color:var(--warn)} .note.crit{border-left-color:var(--crit)}
+.note .lbl{font-family:var(--sans);font-size:.62rem;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:.3rem}
+.note.warn .lbl{color:var(--warn)} .note.crit .lbl{color:var(--crit)}
+
+/* diagrams and code -------------------------------------------------------- */
+.scroll{overflow-x:auto;margin:1.3rem 0}
+pre{margin:0}
+pre.diagram,pre.code{background:var(--code-bg);border:1px solid var(--rule);
+  border-radius:3px;padding:1rem 1.1rem;font-family:var(--mono);font-size:.76rem;
+  line-height:1.5;color:var(--code-ink);white-space:pre}
+/* diagrams live or die on a fixed character cell: kill ligatures and contextual
+   substitution so box-drawing glyphs keep a 1ch advance. The art is generated on a
+   grid by flowgen.py -- never hand-align, and never use ambiguous-width triangles. */
+pre.diagram{border-left:2px solid var(--slate);font-variant-ligatures:none;
+  font-feature-settings:"liga" 0,"calt" 0;-webkit-font-feature-settings:"liga" 0,"calt" 0}
+.diagram .dim{color:var(--ink-3)} .diagram .hi{color:var(--ink);font-weight:600}
+.diagram .ac{color:var(--slate)} .diagram .ac2{color:var(--teal)} .diagram .ac3{color:var(--orange)}
+.code .kw{color:var(--kw)} .code .str{color:var(--str)} .code .num{color:var(--num)}
+.code .cm{color:var(--cm);font-style:italic} .code .fn{color:var(--fn)} .code .key{color:var(--slate)}
+
+/* .flow -- a CSS-grid flow rail. The polished alternative to the ASCII diagram for a
+   path/pipeline figure: equal-width node cards on one row, arrows (with optional edge
+   labels) drawn in the columns between them, and optional labeled bands grouping the
+   stages underneath. Pick a width class .n2 .. .n6 for the node count; the grid
+   alternates 1fr node tracks with auto arrow tracks. Collapses to a vertical stack
+   with downward arrows below 640px. Use this OR pre.diagram, not both, per figure. */
+.flow{display:grid;align-items:stretch;margin:.3rem 0}
+.flow.n2{grid-template-columns:1fr auto 1fr}
+.flow.n3{grid-template-columns:1fr auto 1fr auto 1fr}
+.flow.n4{grid-template-columns:1fr auto 1fr auto 1fr auto 1fr}
+.flow.n5{grid-template-columns:1fr auto 1fr auto 1fr auto 1fr auto 1fr}
+.flow.n6{grid-template-columns:1fr auto 1fr auto 1fr auto 1fr auto 1fr auto 1fr}
+.flow-node{background:var(--paper);border:1px solid var(--rule-2);
+  border-top:2px solid var(--slate);border-radius:3px;padding:.7rem .8rem .75rem;
+  display:flex;flex-direction:column;gap:.28rem;min-width:0}
+.flow-node .k{font-family:var(--sans);font-size:.6rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3)}
+.flow-node .t{font-family:var(--sans);font-size:.82rem;font-weight:600;color:var(--ink);
+  line-height:1.2;text-wrap:balance}
+.flow-node .s{font-family:var(--mono);font-size:.67rem;color:var(--ink-3);line-height:1.3}
+.flow-node.teal{border-top-color:var(--teal)}
+.flow-node.orange{border-top-color:var(--orange)}
+.flow-node.solid{background:var(--slate-soft);border-color:var(--slate-2)}
+.flow-arrow{position:relative;align-self:center;min-width:2.6rem;height:1.3rem;
+  display:flex;align-items:center;justify-content:center}
+.flow-arrow::before{content:"";position:absolute;top:50%;left:.1rem;right:.4rem;
+  border-top:1.5px solid var(--rule-2);transform:translateY(-50%)}
+.flow-arrow::after{content:"";position:absolute;top:50%;right:.2rem;width:.42rem;height:.42rem;
+  border-top:1.6px solid var(--slate-2);border-right:1.6px solid var(--slate-2);
+  transform:translateY(-50%) rotate(45deg)}
+.flow-arrow span{position:relative;top:-.72rem;font-family:var(--sans);font-size:.62rem;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);
+  background:var(--paper);padding:0 .3rem;white-space:nowrap;z-index:1}
+/* bands are a second grid row INSIDE .flow, so each spans its exact node columns
+   (set grid-column inline: for n5, 1/8 covers nodes 1-4, 9/10 covers node 5). The
+   arrow gap between the groups is left uncovered, giving a clean break. */
+.flow-band{grid-row:2;margin-top:.5rem;border-top:1.5px solid var(--rule-2);
+  padding-top:.4rem;text-align:center;font-family:var(--sans);font-size:.66rem;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3)}
+.flow-band.slate{border-top-color:var(--slate);color:var(--slate)}
+.flow-band.teal{border-top-color:var(--teal);color:var(--teal)}
+.flow-band.orange{border-top-color:var(--orange);color:var(--orange)}
+@media (max-width:640px){
+  .flow{grid-template-columns:1fr!important}
+  .flow-arrow{height:1.9rem;min-width:0;justify-self:center;width:1.4rem}
+  .flow-arrow::before{left:50%;right:auto;top:.1rem;bottom:.45rem;width:0;height:auto;
+    border-top:none;border-left:1.5px solid var(--rule-2);transform:translateX(-50%)}
+  .flow-arrow::after{top:auto;bottom:.2rem;right:auto;left:50%;
+    transform:translateX(-50%) rotate(135deg)}
+  .flow-arrow span{top:0}
+  .flow-band{grid-column:1/-1!important;grid-row:auto;margin-top:.3rem}
+}
+
+figcaption,.cap{font-family:var(--sans);font-size:.72rem;color:var(--ink-3);
+  margin:.5rem 0 0;counter-increment:fig}
+.cap::before{content:"Fig. " counter(chap) "." counter(fig) " -- ";color:var(--ink-2)}
+.paper{counter-reset:chap fig}
+.chapter>h2{counter-reset:sec fig}
+
+/* equation ----------------------------------------------------------------- */
+.equation{display:flex;align-items:center;gap:1rem;margin:1.4rem 0;
+  font-family:var(--serif);font-size:1.02rem}
+.equation .body{flex:1;text-align:center;font-style:italic}
+.equation .num{font-family:var(--sans);font-size:.75rem;color:var(--ink-3)}
+.frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle;margin:0 .2rem}
+.frac .over{border-bottom:1px solid var(--ink);padding:0 .4rem}
+.frac .under{padding:0 .4rem}
+
+/* tables ------------------------------------------------------------------- */
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:.82rem;margin:.4rem 0}
+caption{font-family:var(--sans);font-size:.72rem;color:var(--ink-3);text-align:left;
+  margin-bottom:.5rem;counter-increment:tab}
+caption::before{content:"Table " counter(chap) "." counter(tab) " -- ";color:var(--ink-2)}
+.chapter>h2{counter-reset:sec fig tab}
+th,td{text-align:left;padding:.45rem .7rem;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);
+  border-bottom:1.5px solid var(--rule-2);font-weight:600}
+tbody tr:hover{background:var(--slate-soft)}
+td.meth{font-weight:600;color:var(--ink);font-family:var(--mono);font-size:.78rem}
+td .st{font-weight:600} .st-ok{color:var(--ok)} .st-warn{color:var(--warn)} .st-crit{color:var(--crit)}
+table code{background:none;padding:0}
+tbody td{font-variant-numeric:tabular-nums}
+
+/* checklist ---------------------------------------------------------------- */
+ul.check{list-style:none;margin:1.2rem 0;padding:0;font-family:var(--sans);font-size:.86rem}
+ul.check li{display:flex;gap:.6rem;padding:.35rem 0;border-bottom:1px solid var(--rule)}
+ul.check .box{flex:none;width:1rem;height:1rem;border:1.5px solid var(--rule-2);border-radius:2px;
+  margin-top:.15rem;position:relative}
+ul.check li.done .box{background:var(--ok);border-color:var(--ok)}
+ul.check li.done .box::after{content:"";position:absolute;left:.28rem;top:.06rem;
+  width:.24rem;height:.5rem;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(42deg)}
+ul.check li.done .txt{color:var(--ink-3)}
+
+/* timeline -- subtle engineering detail on the light paper ----------------- */
+.timeline{position:relative;margin:1.6rem 0 1.6rem;padding-left:0;font-family:var(--sans)}
+.timeline .track{position:absolute;left:6.5rem;top:.4rem;bottom:.4rem;width:1px;background:var(--rule-2)}
+.timeline .ev{position:relative;display:grid;grid-template-columns:6rem 1fr;gap:1.3rem;
+  padding:.45rem 0;font-size:.82rem}
+.timeline .ev .t{color:var(--ink-3);font-variant-numeric:tabular-nums;text-align:right}
+.timeline .ev .d{position:relative}
+.timeline .ev .d::before{content:"";position:absolute;left:-.85rem;top:.4rem;width:.5rem;height:.5rem;
+  border-radius:50%;background:var(--paper);border:1.5px solid var(--slate)}
+.timeline .ev.crit .d::before{border-color:var(--crit)}
+.timeline .ev .d b{font-weight:600}
+
+/* event-trace slider (the signature light interaction) --------------------- */
+.trace{margin:1.6rem 0;font-family:var(--sans)}
+.trace .lane{display:flex;gap:2px;margin-bottom:.9rem}
+.trace .lane .span{flex:1;height:2.1rem;background:var(--slate-soft);border:1px solid var(--rule-2);
+  border-radius:2px;display:flex;align-items:center;justify-content:center;
+  font-size:.66rem;color:var(--ink-3);cursor:pointer;transition:background .15s,color .15s}
+.trace .lane .span.cur{background:var(--slate);border-color:var(--slate);color:#fff;font-weight:600}
+.trace .lane .span.past{background:#DCE4EB;color:var(--slate-2)}
+.trace input[type=range]{width:100%;accent-color:var(--slate);margin:.2rem 0 1rem}
+.trace .readout{border-top:2px solid var(--slate);padding-top:.7rem;min-height:5.2rem}
+.trace .readout .lbl{font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 .35rem}
+.trace .readout .k{font-family:var(--mono);font-size:.78rem;color:var(--slate);font-weight:600}
+.trace .readout p{font-family:var(--serif);font-size:.9rem;color:var(--ink-2);margin:.4rem 0 0;max-width:36rem}
+
+/* progressive disclosure --------------------------------------------------- */
+details{border-top:1px solid var(--rule);padding:.6rem 0;margin:0}
+details summary{font-family:var(--sans);font-size:.86rem;font-weight:600;color:var(--ink);
+  cursor:pointer;list-style:none;display:flex;align-items:center;gap:.5rem}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"+";font-family:var(--mono);color:var(--slate);width:1rem}
+details[open] summary::before{content:"\2212"}
+details summary:focus-visible{outline:2px solid var(--slate);outline-offset:2px}
+details .body{padding:.7rem 0 .3rem 1rem;font-size:.9rem;color:var(--ink-2)}
+
+/* references --------------------------------------------------------------- */
+ol.refs{font-family:var(--sans);font-size:.8rem;color:var(--ink-2);line-height:1.5;
+  padding-left:2.2rem;margin:1rem 0}
+ol.refs li{margin:.5rem 0;padding-left:.3rem}
+ol.refs li::marker{color:var(--ink-3)}
+ol.refs cite{font-style:italic;color:var(--ink)}
+
+/* footer ------------------------------------------------------------------- */
+.paper>footer{margin-top:3.5rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+  font-family:var(--sans);font-size:.72rem;color:var(--ink-3);display:flex;
+  justify-content:space-between;flex-wrap:wrap;gap:.5rem}
+
+/* focus states everywhere -------------------------------------------------- */
+a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,.span:focus-visible{
+  outline:2px solid var(--slate);outline-offset:2px}
+
+/* responsive: collapse to a single reading column -------------------------- */
+@media (max-width:72rem){
+  .doc{grid-template-columns:minmax(0,var(--measure));gap:0}
+  .rail{position:static;margin-bottom:1.5rem;border-bottom:1px solid var(--rule);padding-bottom:1.2rem}
+  .rail nav ol{columns:2;column-gap:1.5rem}
+  .rail-refs{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+  .rail-refs .grp{margin-bottom:0}
+  .cols{grid-template-columns:1fr}
+  .paper{padding:2rem clamp(1rem,5vw,1.6rem) 2.5rem}
+}
+
+/* reduced motion ----------------------------------------------------------- */
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+
+/* print: drop the apparatus, format the paper for A4/Letter ---------------- */
+@media print{
+  body{background:#fff;font-size:11pt}
+  .doc{display:block;padding:0}
+  .rail,.trace input,.skip{display:none}
+  .paper{box-shadow:none;border:none;padding:0;max-width:none}
+  .chapter{break-inside:avoid-page}
+  h2,h3{break-after:avoid}
+  pre.diagram,pre.code,table,.trace{break-inside:avoid}
+  .trace .lane .span.cur{background:#000;color:#fff}
+  a.ref,sup.cite a{color:#000}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to specification</a>
+
+<div class="doc">
+
+  <!-- =================================================================== TOC -->
+  <aside class="rail" aria-label="Table of contents">
+    <p class="doc-id">DOC-SPEC-014 &middot; rev 2026.09</p>
+    <nav aria-label="Sections">
+      <ol id="toc">
+        <li><a href="#abstract"><span class="n">0</span>Abstract</a></li>
+        <li><a href="#principles"><span class="n">1</span>Principles</a></li>
+        <li><a href="#architecture"><span class="n">2</span>Architecture</a></li>
+        <li><a href="#model"><span class="n">3</span>Data model</a></li>
+        <li><a href="#protocol"><span class="n">4</span>Protocol</a></li>
+        <li><a href="#operation"><span class="n">5</span>Operation</a></li>
+        <li><a href="#experiments"><span class="n">6</span>Experiments</a></li>
+        <li><a href="#refs"><span class="n">R</span>References</a></li>
+      </ol>
+    </nav>
+    <div class="rail-refs">
+      <div class="grp internal" aria-label="Internal cross-references">
+        <p class="glbl">Cross-references</p>
+        <ul>
+          <li><a href="#model">Record format &sect;3</a></li>
+          <li><a href="#protocol">Throughput Eq. 4.2</a></li>
+          <li><a href="#architecture">Trust boundaries Fig. 2.2</a></li>
+          <li><a href="#experiments">Claims Table 6.1</a></li>
+        </ul>
+      </div>
+      <div class="grp external" aria-label="External citations">
+        <p class="glbl">Cited works</p>
+        <ul>
+          <li><a href="#r3"><span class="cnum">3</span>Knight &amp; Leveson, 1986</a></li>
+          <li><a href="#r4"><span class="cnum">4</span>Lamport, 1978</a></li>
+          <li><a href="#refs"><span class="cnum">R</span>All references</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rail-foot">
+      <div class="stat-row"><span class="k">Status</span><span class="pill slate">Draft</span></div>
+      <p>Reviewed by two independent readers. Figures verified against the reference
+      implementation.</p>
+    </div>
+  </aside>
+
+  <!-- ================================================================= PAPER -->
+  <main class="paper" id="main">
+
+    <!-- cover -->
+    <header class="cover">
+      <p class="eyebrow">Systems Specification</p>
+      <h1>Append-Only Event Ledger</h1>
+      <p class="sub">A durable, replayable record of everything a distributed
+        agent system did, and the sufficient state to reconstruct why.</p>
+      <dl class="meta">
+        <div><dt>Document</dt><dd>DOC-SPEC-014</dd></div>
+        <div><dt>Revision</dt><dd>2026.09 (rev H)</dd></div>
+        <div><dt>Status</dt><dd><span class="pill slate">Draft</span></dd></div>
+        <div><dt>Classification</dt><dd>Internal</dd></div>
+        <div><dt>Supersedes</dt><dd>DOC-SPEC-011</dd></div>
+        <div><dt>Pages</dt><dd>1 of 1</dd></div>
+      </dl>
+    </header>
+
+    <!-- abstract -->
+    <section id="abstract" class="abstract" aria-labelledby="abstract-h">
+      <span class="lbl" id="abstract-h">Abstract</span>
+      <p>An event ledger is an append-only, immutable log of every externally
+        observable action a system takes: each tool result, environment
+        observation, and state mutation, recorded with the parameters needed to
+        reproduce it. This specification defines the record format, the ordering
+        and durability guarantees, the replay procedure, and the operational
+        limits. The design goal is a <em>sufficient statistic</em>: given the
+        ledger up to step <em>n&minus;1</em>, step <em>n</em> can be re-executed
+        deterministically at zero upstream cost. Nothing here depends on a model;
+        every guarantee is enforced by a program.</p>
+    </section>
+
+    <!-- ================================================ 1 PRINCIPLES -->
+    <section class="chapter" id="principles" aria-labelledby="principles-h">
+      <h2 id="principles-h">Principles</h2>
+      <p>Five constraints shape every decision below. They are stated first so the
+        rest of the document can be read as their consequences rather than as a
+        list of features.</p>
+
+      <div class="cols">
+        <div class="col">
+          <p class="lbl s-slate">P1 &middot; Append-only</p>
+          <p>A record, once written, is never mutated or deleted. History is a
+            fact, not a mutable view. Corrections are new records that reference
+            the old, so the trail of what was believed at each step survives.</p>
+        </div>
+        <div class="col teal">
+          <p class="lbl s-teal">P2 &middot; Self-describing</p>
+          <p>Each record carries its own schema tag, actor, and causal parent.
+            A reader reconstructs the graph from the records alone, with no side
+            table and no external index required to make sense of them.</p>
+        </div>
+        <div class="col orange">
+          <p class="lbl s-orange">P3 &middot; Content-addressed</p>
+          <p>Large payloads are stored once and referenced by hash. The ledger
+            holds the causal skeleton; the bodies live beside it, so a record
+            stays small and a replay verifies integrity for free.</p>
+        </div>
+        <div class="col">
+          <p class="lbl s-slate">P4 &middot; Deterministic replay</p>
+          <p>Every model call records its seed and sampling parameters. A failure
+            that cannot be replayed cannot be engineered away, so replayability
+            is a property of the record, not of the harness that produced it.</p>
+        </div>
+        <div class="col teal">
+          <p class="lbl s-teal">P5 &middot; Verify by log, not by claim</p>
+          <p>An actor's narration is evidence of intent, never of outcome. A
+            claim is grounded against the recorded execution or it is clipped.
+            Judgment lives in a deterministic verifier, never in a model.</p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="lbl">Non-goal</span>
+        This is not a message bus. The ledger is a record of what happened, read
+        after the fact by verifiers and replayers. Live coordination between
+        actors is a separate concern with separate guarantees.
+      </div>
+    </section>
+
+    <!-- ================================================ 2 ARCHITECTURE -->
+    <section class="chapter" id="architecture" aria-labelledby="architecture-h">
+      <h2 id="architecture-h">Architecture</h2>
+
+      <h3>The write path</h3>
+      <p>Actors never touch the ledger file directly. Each mutation passes through
+        a write-ahead entry, so a crash between the intent and the effect is
+        recoverable rather than a silent gap.</p>
+
+      <figure class="scroll">
+<pre class="diagram">   <span class="dim">actor</span>                     <span class="dim">ledger</span>                   <span class="dim">reader</span>
+  <span class="hi">┌─────────┐</span>  <span class="dim">append</span> <span class="ac">┌──────────────────┐</span>          <span class="hi">┌──────────┐</span>
+  <span class="hi">│   tool  │</span>────────&gt;<span class="ac">│</span><span class="hi">   write-ahead    </span><span class="ac">│</span>          <span class="hi">│ replayer │</span>
+  <span class="hi">│   call  │</span>         <span class="ac">│</span><span class="hi">   then commit    </span><span class="ac">│</span> &lt;────────<span class="hi">│ verifier │</span>
+  <span class="hi">└─────────┘</span>         <span class="ac">└───────┬──────────┘</span>  <span class="dim">read</span>    <span class="hi">└──────────┘</span>
+                              │ <span class="dim">seal at close</span>
+                              v
+                      <span class="ac2">refs/ledger/&lt;run&gt;</span>   <span class="dim">(immutable, git-object)</span>
+</pre>
+        <figcaption class="cap">write-ahead on the way in, sealed to an immutable object on the way out.</figcaption>
+      </figure>
+
+      <p>The same lifecycle reads more like a datapath as a flow rail. Both figures are
+        first-class in this style: reach for the ASCII diagram when the shape is spatial
+        (branches, boundaries, a grid of cells), and for <code>.flow</code> when the
+        shape is a single path a record travels down.</p>
+
+      <figure class="scroll">
+        <div class="flow n5">
+          <div class="flow-node"><span class="t">append()</span><span class="s">client call</span></div>
+          <div class="flow-arrow"><span>record</span></div>
+          <div class="flow-node"><span class="t">Validate</span><span class="s">schema + span class</span></div>
+          <div class="flow-arrow"><span>checked</span></div>
+          <div class="flow-node"><span class="t">Write-ahead</span><span class="s">WAL append</span></div>
+          <div class="flow-arrow"><span>flushed</span></div>
+          <div class="flow-node teal"><span class="t">Commit</span><span class="s">fsync, offset returned</span></div>
+          <div class="flow-arrow"><span>at close</span></div>
+          <div class="flow-node solid"><span class="t">Seal</span><span class="s">refs/ledger/&lt;run&gt;</span></div>
+          <div class="flow-band slate" style="grid-column:1/8">Live segment &middot; mutable</div>
+          <div class="flow-band teal" style="grid-column:9/10">Sealed &middot; immutable</div>
+        </div>
+        <figcaption class="cap">the write path as a <code>.flow</code> grid: node cards, labeled edges, and bands grouping the mutable stages against the sealed one.</figcaption>
+      </figure>
+
+      <h3>Trust boundaries</h3>
+      <p>Spans are classed at registration, never inferred from output text. A
+        read-only span replays freely; a mutating span is fenced behind the
+        write-ahead log and, in replay, behind a sandbox.</p>
+
+      <figure class="scroll">
+<pre class="diagram">  <span class="dim">┌─────────────── READ-ONLY (replayable) ───────────────┐</span>
+  <span class="dim">│</span><span class="hi">        query_store    read_file    web_search        </span><span class="dim">│</span>
+  <span class="dim">└──────────────────────────────────────────────────────┘</span>
+  <span class="ac3">┌─────────────── MUTATING (WAL-fenced) ────────────────┐</span>
+  <span class="ac3">│</span><span class="hi">      write_store    exec_shell    send_message       </span><span class="ac3">│</span>
+  <span class="ac3">└──────────────────────────────────────────────────────┘</span></pre>
+        <figcaption class="cap">side-effect class is a static tag, set in code at tool registration.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ================================================ 3 DATA MODEL -->
+    <section class="chapter" id="model" aria-labelledby="model-h">
+      <h2 id="model-h">Data model</h2>
+      <p>One record is one line: a JSON object terminated by a newline. Its
+        identity is its byte offset in the ledger file, so no field carries an id
+        the reader could disagree with.</p>
+
+      <div class="scroll">
+<pre class="code"><span class="cm">// one ledger record. field names are short: readers pay per byte.</span>
+{
+  <span class="key">"ts"</span>:     <span class="str">"2026-09-14T22:04:02.104Z"</span>,   <span class="cm">// wall clock, display only</span>
+  <span class="key">"mono"</span>:   <span class="num">3937119184239575</span>,               <span class="cm">// monotonic ns, ordering</span>
+  <span class="key">"actor"</span>:  <span class="str">"reviewer-security"</span>,
+  <span class="key">"kind"</span>:   <span class="str">"tool_result"</span>,
+  <span class="key">"parent"</span>: <span class="num">40318</span>,                          <span class="cm">// byte offset of the causal parent</span>
+  <span class="key">"class"</span>:  <span class="str">"READ_ONLY"</span>,
+  <span class="key">"call"</span>:   { <span class="key">"model"</span>:<span class="str">"sonnet"</span>, <span class="key">"seed"</span>:<span class="num">88213</span>, <span class="key">"temp"</span>:<span class="num">0.0</span> },
+  <span class="key">"body"</span>:   <span class="str">"sha256:e3b0c442…b7852b855"</span>     <span class="cm">// content-addressed, stored beside</span>
+}</pre>
+      </div>
+
+      <h3>Record kinds</h3>
+      <p>The set is closed. A new kind is a decision, not a convenience, because
+        every verifier switches on it.</p>
+
+      <div class="scroll">
+      <table>
+        <caption>the six record kinds and how each is consumed</caption>
+        <thead><tr><th>kind</th><th>emitted by</th><th>read by</th><th>replayable</th></tr></thead>
+        <tbody>
+          <tr><td class="meth">say</td><td>any actor</td><td>humans</td><td>n/a</td></tr>
+          <tr><td class="meth">find</td><td>reviewers</td><td>the tally</td><td>n/a</td></tr>
+          <tr><td class="meth">evid</td><td>checks</td><td>the verifier</td><td>yes</td></tr>
+          <tr><td class="meth">tool_result</td><td>the harness</td><td>the replayer</td><td>yes</td></tr>
+          <tr><td class="meth">mutation</td><td>the harness</td><td>the sandbox</td><td>fenced</td></tr>
+          <tr><td class="meth">ask</td><td>any actor</td><td>a human</td><td>n/a</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="note warn">
+        <span class="lbl">Invariant</span>
+        A record is exactly the fields above and no others; a reader that finds an
+        extra top-level key rejects the record rather than guessing. The field
+        count is fixed so a line parser cannot silently mis-split.
+      </div>
+    </section>
+
+    <!-- ================================================ 4 PROTOCOL -->
+    <section class="chapter" id="protocol" aria-labelledby="protocol-h">
+      <h2 id="protocol-h">Protocol</h2>
+
+      <h3>Ordering</h3>
+      <p>Two questions have two answers. <em>In what order did records land?</em>
+        is the byte offset, exact and free. <em>When did each happen?</em> is the
+        monotonic stamp, which is send-time and may disagree with landing order by
+        a sub-millisecond margin under contention.</p>
+
+      <div class="equation">
+        <span class="body">order(a, b) &nbsp;=&nbsp; sgn(offset<sub>a</sub> &minus; offset<sub>b</sub>)</span>
+        <span class="num">(4.1)</span>
+      </div>
+
+      <p>Replay throughput is bounded by the slower of parse and integrity check.
+        With batched hashing the check dominates only for large bodies:</p>
+
+      <div class="equation">
+        <span class="body">T<sub>replay</sub> &nbsp;=&nbsp;
+          <span class="frac"><span class="over">N</span><span class="under">r<sub>parse</sub></span></span>
+          &nbsp;+&nbsp;
+          <span class="frac"><span class="over">B</span><span class="under">r<sub>hash</sub></span></span></span>
+        <span class="num">(4.2)</span>
+      </div>
+
+      <h3>State trace</h3>
+      <p>A task's stage is not stored; it is folded from the records. The trace
+        below reconstructs one task's path from its ledger slice.</p>
+
+      <figure class="scroll">
+<pre class="diagram">  <span class="dim">offset</span>   <span class="dim">kind</span>          <span class="dim">actor</span>               <span class="dim">stage after</span>
+  <span class="dim">──────</span>   <span class="dim">────</span>          <span class="dim">─────</span>               <span class="dim">───────────</span>
+  <span class="dim">00000</span>    say           developer           building
+  <span class="dim">40318</span>    tool_result   harness             building
+  <span class="dim">40961</span>    find          reviewer-security   <span class="hi">revise</span>        <span class="ac3">&lt;- blocker</span>
+  <span class="dim">41502</span>    say           developer           building
+  <span class="dim">42088</span>    find          reviewer-security   <span class="hi">merged</span>        <span class="ac2">&lt;- cleared</span></pre>
+        <figcaption class="cap">stage is a fold over the record stream, never a stored field.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ================================================ 5 OPERATION -->
+    <section class="chapter" id="operation" aria-labelledby="operation-h">
+      <h2 id="operation-h">Operation</h2>
+
+      <h3>Replay walkthrough</h3>
+      <p>Drag the control to step a failed run to the record before the fault. Up
+        to the cursor, cached results are served from the ledger; the cursor step
+        runs live. Everything before it costs nothing.</p>
+
+      <div class="trace" aria-label="Event trace replay">
+        <div class="lane" id="lane" role="group" aria-label="Trace spans"></div>
+        <input type="range" id="scrub" min="0" max="4" value="4" step="1"
+               aria-label="Replay cursor" aria-describedby="readout">
+        <div class="readout" id="readout" aria-live="polite">
+          <p class="lbl">Record at cursor</p>
+          <span class="k" id="ro-k"></span>
+          <p id="ro-p"></p>
+        </div>
+      </div>
+
+      <h3>Timeline of a fault</h3>
+      <div class="timeline" aria-label="Incident timeline">
+        <div class="track" aria-hidden="true"></div>
+        <div class="ev"><span class="t">t+0.0s</span><span class="d"><b>Step 2</b> subagent emits a schema, syntactically valid, semantically wrong. Reports OK.</span></div>
+        <div class="ev"><span class="t">t+3.1s</span><span class="d"><b>Step 8</b> a downstream span parses the bad payload without complaint.</span></div>
+        <div class="ev crit"><span class="t">t+9.4s</span><span class="d"><b>Step 14</b> an unhandled parse error crashes the run. The origin is 12 steps back.</span></div>
+        <div class="ev"><span class="t">offline</span><span class="d"><b>Back-trace</b> walk the causal edges from the crash to the origin span; the fix is one clip.</span></div>
+      </div>
+
+      <h3>Operator checklist</h3>
+      <ul class="check">
+        <li class="done"><span class="box" aria-hidden="true"></span><span class="txt">Ledger sealed to <code>refs/ledger/&lt;run&gt;</code> at task close.</span></li>
+        <li class="done"><span class="box" aria-hidden="true"></span><span class="txt">Seed and sampling params present on every model span.</span></li>
+        <li class="done"><span class="box" aria-hidden="true"></span><span class="txt">Mutating spans fenced behind the write-ahead log.</span></li>
+        <li><span class="box" aria-hidden="true"></span><span class="txt">Tail-based sampling retains 100% of error traces.</span></li>
+        <li><span class="box" aria-hidden="true"></span><span class="txt">Secret and PII scrubbing verified on the collector.</span></li>
+      </ul>
+
+      <details>
+        <summary>Recovery from a torn write</summary>
+        <div class="body">A crash between the write-ahead entry and the commit
+          leaves an intent with no effect. On restart, the recovery pass finds
+          any write-ahead entry without a matching commit, re-executes it under
+          the sandbox, and appends the commit. The ledger is never left with a
+          half-record because the record is one atomic append.</div>
+      </details>
+      <details>
+        <summary>Circuit breaker on a runaway loop</summary>
+        <div class="body">Degenerate retry loops collapse output-token entropy
+          across consecutive spans with matching arguments. When the variance
+          falls below threshold for four spans, the breaker trips and the run
+          halts before it burns budget. The check is arithmetic over the record
+          stream, not a model call, so it fires in sub-millisecond time.</div>
+      </details>
+    </section>
+
+    <!-- ================================================ 6 EXPERIMENTS -->
+    <section class="chapter" id="experiments" aria-labelledby="experiments-h">
+      <h2 id="experiments-h">Experiments</h2>
+      <p>Each row is a claim about the design tested against the reference
+        implementation. Status is measured, not asserted.</p>
+
+      <div class="scroll">
+      <table>
+        <caption>design claims and their verification status</caption>
+        <thead><tr><th>claim</th><th>method</th><th>result</th><th>status</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Concurrent append never tears a record</td>
+            <td>8 writers &times; 200 records</td>
+            <td>1600 / 1600 intact</td>
+            <td><span class="st st-ok">Implemented</span></td>
+          </tr>
+          <tr>
+            <td>Replay reproduces a failure at zero cost</td>
+            <td>cached prefix, live tail step</td>
+            <td>exact, $0 upstream</td>
+            <td><span class="st st-ok">Implemented</span></td>
+          </tr>
+          <tr>
+            <td>Grounding cuts fabricated claims</td>
+            <td>clip against execution log</td>
+            <td>90% &rarr; 4%<sup class="cite"><a href="#r1">1</a></sup></td>
+            <td><span class="st st-warn">Partial</span></td>
+          </tr>
+          <tr>
+            <td>Cross-VLAN causal back-trace</td>
+            <td>walk data-dependency edges</td>
+            <td>origin found in 1 pass</td>
+            <td><span class="st st-ok">Implemented</span></td>
+          </tr>
+          <tr>
+            <td>Distillation reuses learned strategy</td>
+            <td>contrastive pivot extraction<sup class="cite"><a href="#r2">2</a></sup></td>
+            <td>not yet built</td>
+            <td><span class="st st-crit">Critical gap</span></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="note crit">
+        <span class="lbl">Open</span>
+        Trace-to-memory distillation is unbuilt and is the one row that blocks a
+        self-improving loop. Everything above it holds; this is where the next
+        work goes. See <a class="ref" href="#refs">references</a> for prior art.
+      </div>
+
+      <h3>Implementation</h3>
+      <p>The reference implementation is three small programs: the record
+        primitive (append, read, seal), the folder that reconstructs state, and
+        the verifier that grounds claims. Each is under a few hundred lines and
+        depends only on the kernel, git, and the standard library. See
+        <a class="ref" href="#">the reference tree</a> and
+        <a class="ref" href="#">the conformance suite</a>.</p>
+    </section>
+
+    <!-- ================================================ REFERENCES -->
+    <section class="chapter" id="refs" aria-labelledby="refs-h">
+      <h2 id="refs-h">References</h2>
+      <ol class="refs">
+        <li id="r1">Execution-log grounding for autonomous research agents.
+          <cite>Prior art, unverified citation.</cite> Confirm before quoting the figure.</li>
+        <li id="r2">Contrastive trajectory distillation into reusable strategy memory.
+          <cite>Prior art, unverified citation.</cite></li>
+        <li>Knight, J. C. and Leveson, N. G. An experimental evaluation of the
+          assumption of independence in multiversion programming.
+          <cite>IEEE TSE</cite>, 1986.</li>
+        <li>Lamport, L. Time, clocks, and the ordering of events in a distributed
+          system. <cite>CACM</cite>, 1978.</li>
+      </ol>
+    </section>
+
+    <footer>
+      <span>DOC-SPEC-014 &middot; rev 2026.09 &middot; Draft</span>
+      <span>Grounded in evidence, not in claims.</span>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+/* ----------------------------------------------------------------------------
+   Two light behaviours only, both progressive enhancement -- the document reads
+   and prints fully without them. (1) scroll-spy that marks the current TOC item.
+   (2) the event-trace scrubber. Reduced-motion is respected by the CSS; nothing
+   here animates layout.
+   ---------------------------------------------------------------------------- */
+(function(){
+  // ---- scroll-spy ----------------------------------------------------------
+  var links = Array.prototype.slice.call(document.querySelectorAll('#toc a'));
+  var map = {};
+  links.forEach(function(a){ map[a.getAttribute('href').slice(1)] = a; });
+  var targets = Object.keys(map).map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  if ('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){
+          links.forEach(function(a){ a.removeAttribute('aria-current'); });
+          var a = map[e.target.id];
+          if (a) a.setAttribute('aria-current','true');
+        }
+      });
+    }, { rootMargin:'-10% 0px -75% 0px', threshold:0 });
+    targets.forEach(function(t){ io.observe(t); });
+  }
+
+  // ---- event-trace scrubber ------------------------------------------------
+  var EVENTS = [
+    { k:'offset 00000 · say',         p:'The developer posts an initial implementation, no input validation yet.' },
+    { k:'offset 40318 · tool_result', p:'The build tool returns success; its stdout is content-addressed by hash.' },
+    { k:'offset 40961 · find',        p:'reviewer-security raises a blocker: an unvalidated field, null dereference reachable.' },
+    { k:'offset 41502 · say',         p:'The developer posts a fix addressing the flagged field.' },
+    { k:'offset 42088 · find',        p:'reviewer-security clears the finding; the tally routes the task to merged.' }
+  ];
+  var lane = document.getElementById('lane');
+  var scrub = document.getElementById('scrub');
+  var roK = document.getElementById('ro-k'), roP = document.getElementById('ro-p');
+  if (lane && scrub){
+    EVENTS.forEach(function(ev, i){
+      var s = document.createElement('button');
+      s.type = 'button'; s.className = 'span'; s.textContent = i;
+      s.setAttribute('aria-label', 'Record ' + i + ': ' + ev.k);
+      s.addEventListener('click', function(){ scrub.value = i; render(); });
+      lane.appendChild(s);
+    });
+    function render(){
+      var cur = +scrub.value;
+      Array.prototype.forEach.call(lane.children, function(s, i){
+        s.classList.toggle('cur', i === cur);
+        s.classList.toggle('past', i < cur);
+      });
+      roK.textContent = EVENTS[cur].k;
+      roP.textContent = EVENTS[cur].p;
+    }
+    scrub.addEventListener('input', render);
+    render();
+  }
+})();
+</script>
+</body>
+</html>
