@@ -376,7 +376,10 @@ class Sheet:
             return f'<div class="{kind}"><div class="ctitle">{kind.upper()}</div>{self.blocks(body)}</div>'
         if kind == "checklist":
             title, _, role = (p.strip() for p in arg.partition("|"))
-            lines = "".join(f"<div>{inline(l.rstrip())}</div>" for l in body if l.strip())
+            # a wrapped line hangs under its own text, not under the step number
+            hang = lambda l: len(re.match(r"\s*(\d+\s+)?", l).group(0))
+            lines = "".join(f'<div style="padding-left:{hang(l)}ch;text-indent:-{hang(l)}ch">{inline(l.rstrip())}</div>'
+                            for l in body if l.strip())
             return (f'<div class="checklist"><div class="chead"><span>{inline(title, upper=True)}</span>'
                     f'<span class="role">{inline(role, upper=True)}</span></div><div class="cbody">{lines}</div></div>')
         if kind == "changed":
