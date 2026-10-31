@@ -120,6 +120,10 @@ h2 .pill,h3 .pill,h4 .pill{vertical-align:middle;margin-left:.75rem;font-size:.6
 .sd.st-speculative{color:var(--ink-3);background:none;border:1px dashed currentColor;width:.36rem;height:.36rem}
 .legend{display:flex;flex-wrap:wrap;gap:.35rem .9rem;margin:0 0 .8rem;font-size:.72rem;color:var(--ink-3)}
 .legend .sd{margin:0 .3rem 0 0}
+.rail nav a{display:flex;align-items:baseline}
+.rail nav a .n{flex:none}
+.rail nav a .t{flex:0 1 auto}
+.rail nav a .sd{flex:none;align-self:center}
 .rail nav li.part>a{color:var(--ink);font-weight:600;margin-top:.55rem}
 .rail nav li.part>a .n{color:var(--slate)}
 .rail nav ol.sub{list-style:none;margin:0;padding:0;columns:auto}
