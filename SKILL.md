@@ -28,6 +28,10 @@ description: Render a Markdown report as a print-ready PDF review sheet in the s
    more for small multiples, `[[spark 3 5 4 8]]` inline. `CATALOG.md` picks a figure by the job it does, and
    section A.9 of the reference sheet is a table for choosing one. A block that holds
    blocks takes four colons (`::::changed` around `:::equations`).
+   A long document organizes with parts (`# Part` then `:::part` with `thesis:`), a `status=` on each mechanism's
+   `##` heading (`built`, `prototyped`, `designed`, `speculative`), `link=#anchor` on the nodes of a system-map
+   `:::diagram`, a `:::trace` (`step "label" | what happens | #anchor`) to walk one thing through the system, and a
+   `:::glossary` (`term | definition`); `examples/core-blocks` shows all five.
 3. Render with page PNGs and look at every page:
 
        python <skill dir>/sheet.py report.md --png

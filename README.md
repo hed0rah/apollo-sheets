@@ -55,7 +55,7 @@ python web.py report.md -o out.html -s status=Final
 ```
 
 On the page, links work: `[the gate](#the-gate)` points at a heading's slug (as GitHub makes it), or give a heading
-its own with `## The gate {#gate}`; figures and tables answer to `#fig-N.M` and `#tab-N.M`. A link to nothing stops
+its own with `## The gate {#gate}`; figures and tables answer to `#fig-N.M` and `#tab-N.M`, where N is the section number (`#fig-II.3.1` in a document with parts). A link to nothing stops
 the render. Three more front-matter fields: `status` (the pill, Draft by default), `abstract` and `eyebrow`. The
 page shell is the Interactive Whitepaper template in `web-template.html`; set `SHEET_TEMPLATE` to use another.
 
@@ -85,7 +85,11 @@ Quote values that contain a colon.
 |---|---|
 | `## Heading` | `2.1.1  HEADING.` numbered in the gutter |
 | `### Heading` | `2.1.1.1  Heading.` underlined |
-| `# Heading` | a part heading, on a new page |
+| `# Heading` | a part, on a new page: `PART II`, its title, and a list of its sections with their status; sections inside number `II.1`, `II.1.1` |
+| `:::part` | right after a `#` heading: `thesis: one or two sentences` set under the part's title |
+| `## Heading {#id status=built}` | an anchor of its own and a status: `built`, `prototyped`, `designed`, `speculative`; a mark beside the heading on paper, a pill on the page, a dot in the rail |
+| `:::trace Caption` | one thing walked through a system: `step "label" \| what happens \| #anchor`, a line a step; a numbered table on paper, a scrubber on the page |
+| `:::glossary` | `term \| definition`, a line a term: a table on paper; on the page, the first use of each term in the text gets a card on hover, pinned by a click |
 | `![Caption](fig.svg){width=half}` | a numbered figure; `width=third` too; `gray=1` prints a dark screen capture in black ink |
 | `$inline$`, `$$display$$`, `\boxed{}` | TeX through matplotlib mathtext; displays are numbered |
 | `:::equations` | aligned equations, one a line; a line starting with a relation continues the one above |
@@ -141,7 +145,7 @@ keep their words and drop the URL.
 
 ```
 grid 1.7 0.8                              # inches between columns and rows (optional)
-node ID "LABEL" COL ROW [box|round|drum|dash|diamond|text] [w=COLS] [h=ROWS]
+node ID "LABEL" COL ROW [box|round|drum|dash|diamond|text] [w=COLS] [h=ROWS] [link=#ANCHOR]
 edge FROM TO ["LABEL"] [dash] [both]
 edge FROM TO ["LABEL"] bend=R             # a curve: R > 0 bows right of the way it runs, < 0 left
 edge FROM TO ["LABEL"] ends=1:N           # lettering at each end: ER cardinality, 1:1 1:N N:M

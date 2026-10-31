@@ -28,6 +28,7 @@ import csv
 import io
 import re
 import shlex
+import urllib.parse
 from pathlib import Path
 
 import matplotlib
@@ -49,6 +50,7 @@ STYLE = {
 }
 DASHES = ["-", (0, (5, 2)), (0, (1.2, 1.6)), (0, (6, 2, 1.2, 2)), (0, (2.5, 2.5))]
 HATCH = ["////", "", "xxxx", "....", "\\\\\\\\"]
+LINK_NODES = False      # web.py sets it: a diagram node's link= becomes a clickable region; paper ignores it
 
 
 def svg(fig):
@@ -135,8 +137,9 @@ def _crown(a, b, rad):
 
 
 def diagram(spec):
-    """node ID "LABEL" COL ROW [box|drum|round|dash|diamond|text] [w=COLS] [h=ROWS]
-                                                (diamond: a decision; its edges leave from the points)
+    """node ID "LABEL" COL ROW [box|drum|round|dash|diamond|text] [w=COLS] [h=ROWS] [link=#ANCHOR]
+                                                (diamond: a decision; its edges leave from the points;
+                                                 link: the node is clickable on the web page, ignored on paper)
        edge FROM TO ["LABEL"] [dash] [both]     (routed round other boxes: one elbow, else a Z through a gap)
        edge FROM TO ["LABEL"] bend=R            (a curve instead, bowed by R: + bows to the right of the way it
                                                  runs, - to the left; for back-edges and cycles through a graph)
@@ -159,7 +162,8 @@ def diagram(spec):
             shape = next((o for o in rest[4:] if "=" not in o), "box")
             nodes[rest[0]] = dict(label=caps(rest[1]), x=float(rest[2]) * DX, y=-float(rest[3]) * DY, shape=shape,
                                   w=float(opts.get("w", 0)) * DX - (DX - BW) if "w" in opts else BW,
-                                  h=float(opts.get("h", 0)) * DY - (DY - BH) if "h" in opts else BH)
+                                  h=float(opts.get("h", 0)) * DY - (DY - BH) if "h" in opts else BH,
+                                  link=opts.get("link"))
         elif kind == "edge":
             label = next((o for o in rest[2:] if o not in ("dash", "both") and "=" not in o), "")
             ends = next((o[5:].split(":") for o in rest[2:] if o.startswith("ends=")), None)
@@ -254,6 +258,9 @@ def diagram(spec):
                                                          lw=0.9, ls=(0, (4, 2)) if n["shape"] == "dash" else "-"))
             ax.text(x, y - (0.02 if n["shape"] == "drum" else 0), n["label"], ha="center", va="center", fontsize=6,
                     linespacing=1.1)
+            if LINK_NODES and n["link"]:
+                hit = ax.add_patch(Rectangle((x - w / 2, y - h / 2), w, h, fc="#ffffff", ec="none", alpha=0.01, zorder=5))
+                hit.set_url("nvlink:" + n["link"].lstrip("#") + ":" + urllib.parse.quote(n["label"].replace("\n", " ")))
         arrow = dict(color=INK, lw=0.8, mutation_scale=7, zorder=0.9)
         for e in (e for e in edges if e["bend"] is not None):
             a, b = nodes[e["a"]], nodes[e["b"]]

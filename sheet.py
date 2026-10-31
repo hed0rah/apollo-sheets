@@ -176,6 +176,117 @@ def inline(s, upper=False):
 
 # -- the document ------------------------------------------------------------------------------------------------------
 
+STATUSES = ("built", "prototyped", "designed", "speculative")
+BODY_BLOCKS = ("caution", "warning", "note", "changed", "row")      # blocks whose body is more Markdown
+
+
+def roman(n):
+    out = ""
+    for v, r in ((10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")):
+        while n >= v:
+            out, n = out + r, n - v
+    return out
+
+
+def slug(text):
+    """a heading's anchor, as GitHub makes it, so links written for the Markdown work in web.py too"""
+    text = re.sub(r"<[^>]+>|`|\*", "", text).lower()
+    return re.sub(r"[^\w\- ]", "", text).strip().replace(" ", "-")
+
+
+def heading_attrs(text):
+    """## Heading {#id status=built}: the text, and the attributes; braces that are not attributes stay text"""
+    text = re.sub(r"^(\d+\.)+\d*\s+|^\d+(\.\d+)+\s+", "", text.strip())      # 2.1, 2.1., 3. but not a year
+    m = re.search(r"\s*\{([^{}]*)\}$", text)
+    if not m or not m.group(1).split() or not all(re.fullmatch(r"#[\w-]+|status=\w+", t) for t in m.group(1).split()):
+        return text, {}
+    attrs = {}
+    for t in m.group(1).split():
+        if t.startswith("#"):
+            attrs["id"] = t[1:]
+        else:
+            attrs["status"] = t.split("=", 1)[1]
+            if attrs["status"] not in STATUSES:
+                raise SystemExit(f"sheet: heading {text!r}: status must be one of {', '.join(STATUSES)}")
+    return text[:m.start()], attrs
+
+
+def outline(lines, meta):
+    """every heading in reading order, numbered once, so both renderers agree and a part can list what it holds.
+    Each entry: level, text, id, status, num (II.3, II.3.1; or 4, 4.1 before any part), part (index or None)."""
+    heads, used = [], set()
+    has_title = bool(meta.get("title"))
+    sec = str(meta.get("section", "1"))
+    parted = any(re.match(r"^#\s", l.strip()) for l in lines)
+    state = dict(part=None, chap=0, sub=0, subsub=0, title=has_title)
+
+    def walk(ls):
+        i = 0
+        while i < len(ls):
+            s = ls[i].strip()
+            fence = re.match(r"^(:{3,})\s*(\w+)?", s)
+            if fence and fence.group(2):
+                j = i + 1
+                while j < len(ls) and ls[j].strip() != fence.group(1):
+                    j += 1
+                if fence.group(2) in BODY_BLOCKS:
+                    walk([l for l in ls[i + 1: j] if l.strip() != "|||"])
+                i = j + 1
+                continue
+            if s.startswith("```"):
+                j = i + 1
+                while j < len(ls) and not ls[j].strip().startswith("```"):
+                    j += 1
+                i = j + 1
+                continue
+            if s.startswith("<!--"):
+                while i < len(ls) and "-->" not in ls[i]:
+                    i += 1
+                i += 1
+                continue
+            m = re.match(r"^(#{1,4})\s+(.*)$", s)
+            if m:
+                head(len(m.group(1)), m.group(2))
+            i += 1
+
+    def head(level, raw):
+        text, attrs = heading_attrs(raw)
+        if level == 1 and not state["title"]:
+            state["title"] = True
+            heads.append(dict(level=0, text=text, id=None, status=None, num="", part=None))
+            return
+        a = attrs.get("id") or slug(text) or "s"
+        base, n = a, 1
+        while a in used and "id" not in attrs:
+            a, n = f"{base}-{n}", n + 1
+        if a in used:
+            raise SystemExit(f"sheet: two headings share the anchor #{a}")
+        used.add(a)
+        if level == 1:
+            state["part"] = 0 if state["part"] is None else state["part"] + 1
+            state["chap"] = 0
+            num = roman(state["part"] + 1)
+        elif level == 2:
+            state["chap"] += 1
+            state["sub"] = 0
+            pre = f"{roman(state['part'] + 1)}." if state["part"] is not None else ("" if parted else f"{sec}.")
+            num = f"{pre}{state['chap']}"
+            state["chapnum"] = num
+        elif level == 3:
+            state["sub"] += 1
+            state["subsub"] = 0
+            num = f"{state.get('chapnum', sec)}.{state['sub']}"
+            state["subnum"] = num
+        else:
+            state["subsub"] += 1
+            num = f"{state.get('subnum', sec)}.{state['subsub']}"
+        heads.append(dict(level=level, text=text, id=a, status=attrs.get("status"), num=num, part=state["part"]))
+
+    walk(lines)
+    return heads
+
+
+
 class Sheet:
     def __init__(self, meta, base):
         self.m = meta
@@ -184,6 +295,25 @@ class Sheet:
         self.count = [0, 0, 0]                  # ##, ###, ####
         self.fig = self.tab = self.eq = 0
         self.dwg = 500
+        self.heads, self.hi = [], 0               # the outline, and how far the render has read it
+        self.thesis = {}                          # part index -> its :::part thesis
+        self.cur_part = None
+
+    def prepare(self, lines):
+        self.heads, self.hi = outline(lines, self.m), 0
+        self.byid = {h["id"]: h for h in self.heads if h["id"]}
+
+    def next_head(self, level, text):
+        if self.hi >= len(self.heads):
+            raise SystemExit(f"sheet: heading {text!r} was not in the outline (render without prepare?)")
+        h = self.heads[self.hi]
+        self.hi += 1
+        if h["level"] not in (level, 0) or h["text"] != heading_attrs(text)[0]:
+            raise SystemExit(f"sheet: outline out of step at heading {text!r}")
+        return h
+
+    def part_list(self, idx):
+        return [h for h in self.heads if h["part"] == idx and h["level"] == 2]
 
     def number(self, level):
         self.count[level] += 1
@@ -324,17 +454,55 @@ class Sheet:
         return "\n".join(out)
 
     def heading(self, level, text):
-        text = re.sub(r"^(\d+\.)+\d*\s+|^\d+(\.\d+)+\s+", "", text)      # 2.1, 2.1., 3. but not a year
-        text = re.sub(r"\s*\{#[\w-]+\}$", "", text)                       # an anchor for web.py, not printed
-        if level == 1 and not self.m.get("title"):
-            self.m["title"] = text
+        h = self.next_head(level, text)
+        if h["level"] == 0:
+            self.m["title"] = h["text"]
             return ""
+        text = h["text"]
         if level == 1:
-            return f'<h1>{inline(text, upper=True)}</h1>'
-        num = self.number(level - 2)
+            self.cur_part = h["part"]
+            return f"\x06{h['part']}\x06"                    # the part opener, filled in when the thesis is known
+        stat = (f'<span class="stat s-{h["status"]}">{h["status"].upper()}</span>' if h["status"] else "")
         if level == 2:
-            return f'<h2><span class="num">{num}</span>{inline(text.rstrip("."), upper=True)}.</h2>'
-        return f'<h{level}><span class="num">{num}</span><u>{inline(text.rstrip("."))}.</u></h{level}>'
+            return f'<h2><span class="num">{h["num"]}</span>{inline(text.rstrip("."), upper=True)}.{stat}</h2>'
+        return f'<h{level}><span class="num">{h["num"]}</span><u>{inline(text.rstrip("."))}.</u>{stat}</h{level}>'
+
+    def part_opener(self, idx):
+        h = next(x for x in self.heads if x["level"] == 1 and x["part"] == idx)
+        thesis = f'<p class="thesis">{inline(self.thesis[idx])}</p>' if idx in self.thesis else ""
+        rows = "".join(f'<tr><td class="pn">{c["num"]}</td><td>{inline(c["text"])}</td>'
+                       f'<td>{f"""<span class="stat s-{c['status']}">{c['status'].upper()}</span>""" if c["status"] else ""}</td></tr>'
+                       for c in self.part_list(idx))
+        lst = f'<table class="plist"><tbody>{rows}</tbody></table>' if rows else ""
+        return (f'<div class="part"><div class="pno">PART {roman(idx + 1)}</div>'
+                f'<h1>{inline(h["text"], upper=True)}</h1>{thesis}{lst}</div>')
+
+    def finish(self, content):
+        """what could only be written once the whole source was read: the part openers"""
+        return re.sub("\x06(\\d+)\x06", lambda m: self.part_opener(int(m.group(1))), content)
+
+    def ref_num(self, a):
+        if a not in getattr(self, "byid", {}):
+            raise SystemExit(f"sheet: link to #{a} has no heading")
+        return self.byid[a]["num"]
+
+    def trace_steps(self, body):
+        steps = []
+        for l in (l.strip() for l in body if l.strip()):
+            m = re.match(r'^step\s+"([^"]*)"\s*\|\s*(.*?)(?:\s*\|\s*#([\w.-]+))?\s*$', l)
+            if not m:
+                raise SystemExit(f'sheet: :::trace line {l!r}: write step "label" | what happens | #anchor')
+            steps.append((m.group(1), m.group(2), m.group(3)))
+        return steps
+
+    def glossary_terms(self, body):
+        terms = []
+        for l in (l for l in body if l.strip()):
+            term, _, d = l.partition("|")
+            if not d.strip():
+                raise SystemExit(f"sheet: :::glossary line {l.strip()!r}: write term | definition")
+            terms.append((term.strip(), d.strip()))
+        return terms
 
     def image(self, src, caption, width):
         path = (self.base / src).resolve()
@@ -368,11 +536,24 @@ class Sheet:
 
     def _directive(self, kind, arg, body):
         text = "\n".join(body)
-        if not text.strip() and kind not in ("changed", "row"):
+        if not text.strip() and kind not in ("changed", "row", "part"):
             raise SystemExit(f"sheet: :::{kind} {arg} is empty")
         if kind == "table":
             rows = [l for l in body if l.strip().startswith("|")]
             return self.table(rows, arg)
+        if kind == "part":
+            self.thesis[self.cur_part] = re.sub(r"^\s*thesis:\s*", "", " ".join(l.strip() for l in body if l.strip()))
+            return ""
+        if kind == "trace":
+            esc = lambda t: t.replace("|", "\\|")
+            rows = ["| Step | What happens | See |", "|---|---|---|"]
+            rows += [f"| {n} | **{esc(lab)}.** {esc(txt)} | {self.ref_num(a) if a else ''} |"
+                     for n, (lab, txt, a) in enumerate(self.trace_steps(body), 1)]
+            return self.table(rows, arg or None).replace('<div class="table">', '<div class="table trace">', 1)
+        if kind == "glossary":
+            rows = ["| Term | Definition |", "|---|---|"]
+            rows += [f"| {t.replace('|', chr(92) + '|')} | {d.replace('|', chr(92) + '|')} |" for t, d in self.glossary_terms(body)]
+            return self.table(rows, arg or None).replace('<div class="table">', '<div class="table glossary">', 1)
         if kind in ("caution", "warning", "note"):
             return f'<div class="{kind}"><div class="ctitle">{kind.upper()}</div>{self.blocks(body)}</div>'
         if kind == "checklist":
@@ -563,7 +744,8 @@ def render(src_path, overrides=()):
     meta, body = split_front(src_path.read_text())
     meta.update(o.split("=", 1) for o in overrides)
     sheet = Sheet(meta, src_path.parent)
-    content = sheet.blocks(body.splitlines())          # first, so a report's own "# title" can fill the header
+    sheet.prepare(body.splitlines())
+    content = sheet.finish(sheet.blocks(body.splitlines()))   # first, so a report's own "# title" can fill the header
     tab = html.escape(str(meta.get("tab", "")))
     head = f'<div class="title">{inline(str(meta.get("title", "")).upper())}</div>'
     if meta.get("by"):
