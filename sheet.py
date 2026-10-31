@@ -325,6 +325,7 @@ class Sheet:
 
     def heading(self, level, text):
         text = re.sub(r"^(\d+\.)+\d*\s+|^\d+(\.\d+)+\s+", "", text)      # 2.1, 2.1., 3. but not a year
+        text = re.sub(r"\s*\{#[\w-]+\}$", "", text)                       # an anchor for web.py, not printed
         if level == 1 and not self.m.get("title"):
             self.m["title"] = text
             return ""

@@ -41,5 +41,9 @@ description: Render a Markdown report as a print-ready PDF review sheet in the s
 To ingest someone else's report without editing it, set front matter from the command line:
 `-s section=3 -s tab=PHY`.
 
+For a screen, the same source renders as an Interactive Whitepaper, one HTML file with a rail, cross-references
+and light and dark: `python <skill dir>/web.py report.md`. Links between parts (`[text](#heading-slug)`,
+`#fig-N.M`, `#tab-N.M`) work there and print as their words on paper. It needs the page template, `SHEET_TEMPLATE`.
+
 Requirements: Python 3.8+ with matplotlib, numpy and pyyaml, Chrome or Chromium, the URW base35 fonts.
 `SHEET_FONTS` and `SHEET_CHROME` override the font directory and browser.

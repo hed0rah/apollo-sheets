@@ -42,6 +42,23 @@ python sheet.py notes.md -s section=3 -s tab=PHY   # someone else's report, as i
 python sheet.py report.md --html               # keep the intermediate HTML
 ```
 
+## The same source as a web page
+
+`web.py` renders the same Markdown as an Interactive Whitepaper: one self-contained HTML file with a cover, numbered
+chapters, a rail holding the contents (with scroll-spy), the cross-references and a list of figures and tables, and
+light and dark themes. Every figure is drawn by the same code as the PDF, as inline SVG with its lettering in
+outline; its ink and greys follow the theme, and a figure holding a raster sits on a light plate in the dark.
+
+```
+python web.py report.md                        # writes report.html beside it
+python web.py report.md -o out.html -s status=Final
+```
+
+On the page, links work: `[the gate](#the-gate)` points at a heading's slug (as GitHub makes it), or give a heading
+its own with `## The gate {#gate}`; figures and tables answer to `#fig-N.M` and `#tab-N.M`. A link to nothing stops
+the render. Three more front-matter fields: `status` (the pill, Draft by default), `abstract` and `eyebrow`. The
+page shell is the Interactive Whitepaper template, read from `SHEET_TEMPLATE`.
+
 ## Front matter
 
 ```yaml
