@@ -55,7 +55,7 @@ python web.py report.md -o out.html -s status=Final
 ```
 
 On the page, links work: `[the gate](#the-gate)` points at a heading's slug (as GitHub makes it), or give a heading
-its own with `## The gate {#gate}`; figures and tables answer to `#fig-N.M` and `#tab-N.M`, where N is the section number (`#fig-II.3.1` in a document with parts). A link to nothing stops
+its own with `## The gate {#gate}`; figures and tables answer to `#fig-N.M` and `#tab-N.M`, where N is the section number (`#fig-II.3.1` in a document with parts; `part_numbers: 0` in the front matter numbers parts 0, 1, 2 instead, so `#fig-1.3.1`). A link to nothing stops
 the render. Three more front-matter fields: `status` (the pill, Draft by default), `abstract` and `eyebrow`. The
 page shell is the Interactive Whitepaper template in `web-template.html`; set `SHEET_TEMPLATE` to use another.
 

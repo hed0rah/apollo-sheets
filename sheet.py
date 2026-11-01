@@ -180,6 +180,11 @@ STATUSES = ("built", "prototyped", "designed", "speculative")
 BODY_BLOCKS = ("caution", "warning", "note", "changed", "row")      # blocks whose body is more Markdown
 
 
+def part_no(i, meta):
+    """part i (0-based) as printed: I, II... by default; 0, 1... with `part_numbers: 0` in the front matter"""
+    return str(i) if str(meta.get("part_numbers", "")) == "0" else roman(i + 1)
+
+
 def roman(n):
     out = ""
     for v, r in ((10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")):
@@ -265,11 +270,11 @@ def outline(lines, meta):
         if level == 1:
             state["part"] = 0 if state["part"] is None else state["part"] + 1
             state["chap"] = 0
-            num = roman(state["part"] + 1)
+            num = part_no(state["part"], meta)
         elif level == 2:
             state["chap"] += 1
             state["sub"] = 0
-            pre = f"{roman(state['part'] + 1)}." if state["part"] is not None else ("" if parted else f"{sec}.")
+            pre = f"{part_no(state['part'], meta)}." if state["part"] is not None else ("" if parted else f"{sec}.")
             num = f"{pre}{state['chap']}"
             state["chapnum"] = num
         elif level == 3:
@@ -474,7 +479,7 @@ class Sheet:
                        f'<td>{f"""<span class="stat s-{c['status']}">{c['status'].upper()}</span>""" if c["status"] else ""}</td></tr>'
                        for c in self.part_list(idx))
         lst = f'<table class="plist"><tbody>{rows}</tbody></table>' if rows else ""
-        return (f'<div class="part"><div class="pno">PART {roman(idx + 1)}</div>'
+        return (f'<div class="part"><div class="pno">PART {part_no(idx, self.m)}</div>'
                 f'<h1>{inline(h["text"], upper=True)}</h1>{thesis}{lst}</div>')
 
     def finish(self, content):
