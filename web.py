@@ -345,18 +345,6 @@ def sized(svg, scale=1.55):
     return svg
 
 
-_N = [0]
-
-
-def private_ids(svg):
-    """each figure's ids under its own prefix: matplotlib reuses glyph and clip ids from figure to figure"""
-    _N[0] += 1
-    p = f"s{_N[0]}-"
-    svg = re.sub(r'\bid="([^"]+)"', lambda m: f'id="{p}{m.group(1)}"', svg)
-    svg = re.sub(r'url\(#([^)]+)\)', lambda m: f"url(#{p}{m.group(1)})", svg)
-    return re.sub(r'(xlink:href|href)="#([^"]+)"', lambda m: f'{m.group(1)}="#{p}{m.group(2)}"', svg)
-
-
 NODELINK = re.compile(r'<a xlink:href="nvlink:([\w.-]+):([^"]*)">\s*<path(.*?)style="[^"]*"\s*/>\s*</a>', re.S)
 
 
@@ -453,7 +441,7 @@ class Page(sheet.Sheet):
         self.items.append((a, label, caption))
         plate = "<image" in body or "<img" in body
         if body.lstrip().startswith("<svg"):
-            body = private_ids(clean_svg(body))
+            body = sheet.private_ids(clean_svg(body))
             body = sized(body) if plate else retint(sized(body))
             body = node_links(body)
         cls = "fig scroll plate" if plate else "fig scroll"

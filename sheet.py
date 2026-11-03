@@ -185,6 +185,18 @@ def part_no(i, meta):
     return str(i) if str(meta.get("part_numbers", "")) == "0" else roman(i + 1)
 
 
+_N = [0]
+
+
+def private_ids(svg):
+    """each figure's ids under its own prefix: matplotlib reuses glyph and clip ids from figure to figure"""
+    _N[0] += 1
+    p = f"s{_N[0]}-"
+    svg = re.sub(r'\bid="([^"]+)"', lambda m: f'id="{p}{m.group(1)}"', svg)
+    svg = re.sub(r'url\(#([^)]+)\)', lambda m: f"url(#{p}{m.group(1)})", svg)
+    return re.sub(r'(xlink:href|href)="#([^"]+)"', lambda m: f'{m.group(1)}="#{p}{m.group(2)}"', svg)
+
+
 def roman(n):
     out = ""
     for v, r in ((10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")):
@@ -332,6 +344,8 @@ class Sheet:
 
     def figure(self, body, caption, width=""):
         self.fig += 1
+        if body.lstrip().startswith("<svg"):
+            body = private_ids(body)
         cap = f"Figure {self.sec}-{self.fig}.&ensp;{inline(caption)}" if caption else f"Figure {self.sec}-{self.fig}."
         return (f'<figure class="{width}"><div class="art">{body}<span class="dwg">{self.drawing()}</span></div>'
                 f"<figcaption>{cap}</figcaption></figure>")
