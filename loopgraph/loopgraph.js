@@ -181,10 +181,14 @@
     }
     // main axis: ranks side by side; a rank of only waypoints and ports is thin
     var gap = layers.map(function (L) { return L.every(virt) ? (PAPER ? 16 : 26) : (PAPER ? 30 : GAP_MAIN); });
+    var chips = layers.map(function () { return 0; });
     if (labelW) fwd.forEach(function (e) {
       var r = rank[e.u], first = e.chain.length ? e.chain[0] : e.v;
+      if (e.e && labelW(e.e)) chips[r]++;
       if (rank[first] === r + 1 && e.e && !virt(e.u)) gap[r] = Math.max(gap[r], labelW(e.e) + 30);
     });
+    // top to bottom, the chips leaving a rank stack in its gap: room for each of them
+    if (labelW && labelW.stack) chips.forEach(function (n, r) { if (n > 1) gap[r] = Math.max(gap[r], 12 + 24 * n); });
     var box = {}, m = 0;
     function sz(id) { return virt(id) ? { ms: 0, cs: /^~/.test(id) ? 12 : 4 } : size(id); }
     layers.forEach(function (L, ri) {
@@ -258,6 +262,7 @@
       return { w: Math.max(130, tw(gr.label, '600 13.5px ' + F.sans) + 44), h: 60, count: n };
     }
     function msz(s) { return LR ? { ms: s.w, cs: s.h } : { ms: s.h, cs: s.w }; }
+    labelW.stack = !LR;
     var where = {};                                      // node id -> its top-level item id
     g.nodes.forEach(function (n) { where[n.id] = n.group && g.gById[n.group] ? n.group : n.id; });
     var expanded = {};
@@ -360,7 +365,7 @@
       var dir = tm < sm ? -1 : 1;
       var d = 'M' + f(P(sm, a.c)) + ' L' + f(P(sm, L + r)) + ' Q' + f(P(sm, L)) + ' ' + f(P(sm + dir * r, L)) +
               ' L' + f(P(tm - dir * r, L)) + ' Q' + f(P(tm, L)) + ' ' + f(P(tm, L + r)) + ' L' + f(P(tm, b.c - 1));
-      return { d: d, mid: P((sm + tm) / 2, L), back: true };
+      return { d: d, mid: P((sm + tm) / 2, L), back: true, lane: [P(sm + dir * r, L), P(tm - dir * r, L)] };
     }
     var p0 = [a.m + a.ms, a.c + a.cs / 2], p3 = [b.m, b.c + b.cs / 2];
     if (p3[0] < p0[0] + 8) {                             // same rank or behind: leave by the cross side
@@ -436,8 +441,9 @@
       hover(F, gg, { group: b.gr });
     });
     // edges; chips wait until every badge is down, then take the first clear spot along their edge
-    var taken = [], pending = [];
+    var taken = [], pending = [], nodesT = [], chipsT = [];
     Object.keys(Lo.nodes).forEach(function (nid) { var b = Lo.nodes[nid]; taken.push({ x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 }); });
+    nodesT = taken.slice();
     Lo.edges.forEach(function (x) {
       var r = route(Lo, x), e = x.e, kind = x.isLoop && e.kind === 'next' ? 'loop' : e.kind;
       var ge = el('g', { 'class': 'lg-edge lg-e-' + kind }, gE);
@@ -447,9 +453,17 @@
       F.edgeEls.push(rec);
       var label = chipText(e);
       if (kind === 'loop') {
-        var bg = el('g', { 'class': 'lg-badge', transform: 'translate(' + r.mid[0].toFixed(1) + ' ' + r.mid[1].toFixed(1) + ')' }, gC);
         var text = (e.counter ? e.counter + ' ' : '') + (e.max ? '0/' + e.max : 'loop');
         var w = tw(text + (label ? '  ' + label : ''), '600 10.5px ' + fonts(F.fig).mono) + 30;
+        if (r.lane) {                                    // slide along the lane to the first spot clear of boxes
+          var la = r.lane[0], lb = r.lane[1];
+          [.5, .32, .68, .18, .82].some(function (t) {
+            var q = [la[0] + (lb[0] - la[0]) * t, la[1] + (lb[1] - la[1]) * t];
+            if (!overlaps({ x: q[0] - w / 2 - 3, y: q[1] - 13, w: w + 6, h: 26 }, taken)) { r.mid = q; return true; }
+            return false;
+          });
+        }
+        var bg = el('g', { 'class': 'lg-badge', transform: 'translate(' + r.mid[0].toFixed(1) + ' ' + r.mid[1].toFixed(1) + ')' }, gC);
         el('rect', { x: -w / 2, y: -10, width: w, height: 20, rx: 10, 'class': 'lg-badge-bg' }, bg);
         el('path', { d: 'M' + (-w / 2 + 15.5) + ' -3.2 A4.5 4.5 0 1 0 ' + (-w / 2 + 16.5) + ' 2.8', 'class': 'lg-badge-glyph' }, bg);
         el('path', { d: 'M' + (-w / 2 + 14.2) + ' -6.2 L' + (-w / 2 + 16.4) + ' -2.6 L' + (-w / 2 + 12.4) + ' -2.2 z', 'class': 'lg-badge-head' }, bg);
@@ -457,6 +471,7 @@
         if (label) txt(bg, w / 2 - 10, 3.8, label, 'lg-badge-when', 'end');
         rec.badge = { g: bg, t: bt, max: e.max, counter: e.counter };
         taken.push({ x: r.mid[0] - w / 2, y: r.mid[1] - 10, w: w, h: 20 });
+        chipsT.push(taken[taken.length - 1]);
       } else if (label) {
         pending.push({ rec: rec, label: label, kind: kind, mid: r.mid, cw: tw(label, '10.5px ' + fonts(F.fig).mono) + 14 });
       }
@@ -464,17 +479,34 @@
     });
     pending.forEach(function (c) {
       var len = c.rec.path.getTotalLength(), at = c.mid, fr = [.5, .4, .6, .3, .7, .22, .78, .15, .85];
-      function hit(px, py) {
-        var a = { x: px - c.cw / 2 - 3, y: py - 12, w: c.cw + 6, h: 24 };
-        return taken.some(function (t) { return a.x < t.x + t.w && t.x < a.x + a.w && a.y < t.y + t.h && t.y < a.y + a.h; });
+      function box(px, py, cw) { return { x: px - cw / 2 - 3, y: py - 12, w: cw + 6, h: 24 }; }
+      function cost(b) { return overlaps(b, nodesT, true) + 3 * overlaps(b, chipsT, true); }   // over words is worst
+      function search(cw) {
+        var best = null, hitAt = null;
+        // along the edge, then pushed off the line to either side, a chip's height at a time
+        [0, 1, -1, 2, -2, 3, -3, 4, -4].some(function (off) {
+          return fr.some(function (f) {
+            var q = c.rec.path.getPointAtLength(len * f), q2 = c.rec.path.getPointAtLength(Math.min(len, len * f + 2));
+            var tx = q2.x - q.x, ty = q2.y - q.y, n = Math.hypot(tx, ty) || 1;
+            var px = q.x - ty / n * off * 20, py = q.y + tx / n * off * 20, o = cost(box(px, py, cw));
+            if (!o) { hitAt = [px, py]; return true; }
+            if (!best || o < best.o) best = { o: o, at: [px, py] };
+            return false;
+          });
+        });
+        return hitAt ? { at: hitAt, clear: true } : { at: best.at, clear: false, o: best.o };
       }
-      if (len && hit(at[0], at[1])) {
-        for (var i = 0; i < fr.length; i++) {
-          var q = c.rec.path.getPointAtLength(len * fr[i]);
-          if (!hit(q.x, q.y)) { at = [q.x, q.y]; break; }
+      if (len && cost(box(at[0], at[1], c.cw))) {
+        var r1 = search(c.cw);
+        if (!r1.clear && c.label.length > 16) {          // nothing clear: a shorter label, the full one in the card
+          var short = c.label.slice(0, 13).replace(/[\s,;:]+$/, '') + '...', sw = tw(short, '10.5px ' + fonts(F.fig).mono) + 14;
+          var r2 = search(sw);
+          if (r2.clear || r2.o < r1.o) { c.label = short; c.cw = sw; r1 = r2; }
         }
+        at = r1.at;
       }
       taken.push({ x: at[0] - c.cw / 2, y: at[1] - 9, w: c.cw, h: 18 });
+      chipsT.push(taken[taken.length - 1]);
       var cg = el('g', { 'class': 'lg-chip lg-chip-' + c.kind, transform: 'translate(' + at[0].toFixed(1) + ' ' + at[1].toFixed(1) + ')' }, gC);
       el('rect', { x: -c.cw / 2, y: -9, width: c.cw, height: 18, rx: c.kind === 'cond' ? 4 : 9, 'class': 'lg-chip-bg' }, cg);
       txt(cg, 0, 3.6, c.label, 'lg-chip-text', 'middle');
@@ -500,6 +532,15 @@
         fit(F);
       }
     } catch (e) { /* not rendered yet: the computed extent stands */ }
+  }
+
+  function overlaps(a, list, area) {
+    var sum = 0;
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i], ox = Math.min(a.x + a.w, t.x + t.w) - Math.max(a.x, t.x), oy = Math.min(a.y + a.h, t.y + t.h) - Math.max(a.y, t.y);
+      if (ox > 0 && oy > 0) { if (!area) return true; sum += ox * oy; }
+    }
+    return area ? sum : false;
   }
 
   function fit(F) {
@@ -993,7 +1034,15 @@
     fig.dispatchEvent(new CustomEvent('loopgraph:ready', { bubbles: true, detail: F }));
   }
 
-  function boot() { Array.prototype.forEach.call(document.querySelectorAll('[data-loopgraph]'), function (f) { if (!f.loopgraph) build(f); }); }
+  function boot() {
+    // labels are measured on a canvas, so the page's faces must be in before the first layout (on paper they load late)
+    if (document.fonts && document.fonts.status !== 'loaded' && !boot.waited) {
+      boot.waited = true;
+      document.fonts.ready.then(boot);
+      return;
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('[data-loopgraph]'), function (f) { if (!f.loopgraph) build(f); });
+  }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.loopgraph = { boot: boot, normalise: normalise };
 })();
