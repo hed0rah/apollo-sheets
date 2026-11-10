@@ -1,0 +1,67 @@
+{
+  "id": "plan-fanout",
+  "title": "Plan, fan out, gather",
+  "dir": "TB",
+  "limits": {"rounds": 2, "retries": 3},
+  "state": {
+    "plan":     {"reducer": "replace", "doc": "the questions for this round"},
+    "findings": {"reducer": "merge",   "doc": "one entry per question, merged as workers return"},
+    "retries":  {"reducer": "sum",     "doc": "fetch retries spent"},
+    "rounds":   {"reducer": "sum",     "doc": "plan rounds spent"},
+    "report":   {"reducer": "replace", "doc": "the final write-up"}
+  },
+  "groups": [
+    {"id": "worker", "label": "research worker", "doc": "One copy per question, run in parallel by the fan-out. Collapse it to see the outer loop alone."}
+  ],
+  "nodes": [
+    {"id": "start", "kind": "start"},
+    {"id": "plan", "kind": "llm", "label": "plan", "sub": "split into questions", "writes": ["plan", "rounds"]},
+    {"id": "search", "kind": "tool", "label": "search", "group": "worker", "sub": "web or index"},
+    {"id": "fetch", "kind": "tool", "label": "fetch page", "group": "worker", "writes": ["retries"]},
+    {"id": "check", "kind": "router", "label": "page ok?", "group": "worker"},
+    {"id": "notes", "kind": "llm", "label": "take notes", "group": "worker", "tags": ["no tools"], "writes": ["findings"]},
+    {"id": "blocked", "kind": "fail", "label": "blocked", "group": "worker", "sub": "403, give the gap back"},
+    {"id": "gather", "kind": "step", "label": "gather", "sub": "merge reducer joins", "doc": "Waits for every worker; the merge reducer keeps one entry per question."},
+    {"id": "cache", "kind": "store", "label": "findings cache", "sub": "keyed by question"},
+    {"id": "judge", "kind": "llm", "label": "judge coverage", "sub": "gaps or done"},
+    {"id": "write", "kind": "llm", "label": "write report", "writes": ["report"]},
+    {"id": "end", "kind": "end"}
+  ],
+  "edges": [
+    {"from": "start", "to": "plan"},
+    {"from": "plan", "to": "search", "kind": "send", "label": "Send x N"},
+    {"from": "search", "to": "fetch"},
+    {"from": "fetch", "to": "check"},
+    {"from": "check", "to": "fetch", "kind": "loop", "max": 3, "counter": "retries", "when": "empty"},
+    {"from": "check", "to": "notes", "kind": "cond", "when": "ok"},
+    {"from": "check", "to": "blocked", "kind": "fail", "label": "403"},
+    {"from": "notes", "to": "gather"},
+    {"from": "blocked", "to": "gather", "kind": "fail", "label": "gap"},
+    {"from": "gather", "to": "cache"},
+    {"from": "gather", "to": "judge"},
+    {"from": "judge", "to": "plan", "kind": "loop", "max": 2, "counter": "rounds", "when": "gaps"},
+    {"from": "judge", "to": "write", "kind": "cond", "when": "covered"},
+    {"from": "write", "to": "end"}
+  ],
+  "run": [
+    {"node": "start"},
+    {"node": "plan", "writes": {"plan": "q1 pricing, q2 limits", "rounds": 1}, "note": "Two questions, so two workers."},
+    {"node": "search", "note": "The fan-out: each Send starts the worker with its own question."},
+    {"node": "fetch"},
+    {"node": "check"},
+    {"node": "fetch", "via": "check", "writes": {"retries": 1}, "note": "Empty page: the bounded retry, 1 of 3."},
+    {"node": "check"},
+    {"node": "notes", "writes": {"findings": {"q1": "per-seat, annual"}}},
+    {"node": "gather", "checkpoint": "c1"},
+    {"node": "judge", "note": "q2 came back empty: a gap."},
+    {"node": "plan", "via": "judge", "writes": {"plan": "q2 limits, from the docs", "rounds": 1}, "note": "Round two of two."},
+    {"node": "search"},
+    {"node": "fetch"},
+    {"node": "check"},
+    {"node": "notes", "writes": {"findings": {"q2": "60 req/min"}}},
+    {"node": "gather", "checkpoint": "c2"},
+    {"node": "judge"},
+    {"node": "write", "writes": {"report": "pricing and limits, both sourced"}},
+    {"node": "end"}
+  ]
+}

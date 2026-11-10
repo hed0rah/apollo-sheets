@@ -82,6 +82,7 @@ import argparse
 import datetime
 import html
 import io
+import json
 import os
 import re
 import subprocess
@@ -99,6 +100,7 @@ import handbook
 HERE = Path(__file__).resolve().parent
 FONTS = os.environ.get("SHEET_FONTS", "/usr/share/fonts/opentype/urw-base35")
 CHROME = os.environ.get("SHEET_CHROME", "google-chrome")
+LOOPGRAPH = Path(os.environ.get("LOOPGRAPH", HERE / "loopgraph"))   # the component; canonical in house-styles spec/loopgraph
 
 
 # -- math and inline ---------------------------------------------------------------------------------------------------
@@ -177,6 +179,69 @@ def inline(s, upper=False):
 # -- the document ------------------------------------------------------------------------------------------------------
 
 STATUSES = ("built", "prototyped", "designed", "speculative")
+
+# ---- :::loop, an agent loop drawn from a JSON graph -----------------------------------------------------------
+# :::loop Caption | src=graph.json   (or the JSON as the block's body). The page draws it with loopgraph.js:
+# interactive on the web page, at rest and in ink on the sheet, where Chrome runs the same script before it prints.
+LOOP_INK = """<style>.lg{--ink-2:#2b2b2b;--ink-3:#5a5a5a;--rule:#c9c9c9;--rule-2:#8f8f8f;
+--slate-soft:#f1f1f1;--slate:var(--ink);--slate-2:#444;--teal:var(--ink);--orange:var(--ink);--ok:var(--ink);--warn:#3a3a3a;
+--crit:var(--ink);--sans:"Letter",sans-serif;--mono:"Type",monospace;margin:0;border-color:#8f8f8f;border-radius:0}
+.lg .lg-side,.lg .lg-ctl,.lg .lg-chart,.lg .lg-card{display:none!important}.lg .lg-body-row{display:block}
+.lg .lg-canvas{background:none;padding:.05in}.lg .lg-head{padding:.04in .08in}.lg .lg-svg{width:auto!important;height:auto!important;max-width:100%;max-height:7.4in}.lg{break-inside:avoid}</style>"""
+
+
+def loop_source(arg, body, base):
+    """the caption and the checked graph of a :::loop block"""
+    cap, _, opt = (p.strip() for p in arg.partition("|"))
+    m = re.match(r"src=(\S+)$", opt)
+    if m:
+        src = base / m.group(1)
+        if not src.exists():
+            raise SystemExit(f"sheet: :::loop {cap}: no file {src}")
+        text = src.read_text()
+    else:
+        text = "\n".join(body)
+    try:
+        g = json.loads(text)
+    except ValueError as e:
+        raise SystemExit(f"sheet: :::loop {cap}: not JSON: {e}")
+    errs = check_loop(g)
+    if errs:
+        raise SystemExit(f"sheet: :::loop {cap}:\n  " + "\n  ".join(errs))
+    return cap or g.get("caption", ""), json.dumps(g, ensure_ascii=False).replace("</", "<\\/")
+
+
+def check_loop(g):
+    """the rules loopgraph.js enforces, caught at build time instead of in a reader's browser"""
+    errs, nodes = [], g.get("nodes", [])
+    ids = {n.get("id") for n in nodes}
+    if len(ids) != len(nodes):
+        errs.append("duplicate node ids")
+    groups = {x.get("id") for x in g.get("groups", [])}
+    errs += [f"node {n['id']} names no group {n['group']}" for n in nodes if n.get("group") and n["group"] not in groups]
+    pairs = set()
+    for e in g.get("edges", []):
+        errs += [f"edge {e.get('from')} -> {e.get('to')}: no node {e.get(k)}" for k in ("from", "to") if e.get(k) not in ids]
+        if e.get("kind") == "cond" and not e.get("when"):
+            errs.append(f"cond edge {e.get('from')} -> {e.get('to')} has no when")
+        pairs.add((e.get("from"), e.get("to")))
+    prev = None
+    for i, s in enumerate(g.get("run", [])):
+        if s.get("node") not in ids:
+            errs.append(f"run step {i}: no node {s.get('node')}")
+        frm = s.get("via") or prev
+        if frm and (frm, s.get("node")) not in pairs:
+            errs.append(f"run step {i}: no edge {frm} -> {s.get('node')}")
+        errs += [f"run step {i}: writes undeclared key {k}" for k in (s.get("writes") or {}) if k not in g.get("state", {})]
+        prev = s.get("node")
+    return errs
+
+
+def loop_assets(ink=False):
+    """the component, inlined once per page that has a :::loop"""
+    css = (LOOPGRAPH / "loopgraph.css").read_text()
+    js = (LOOPGRAPH / "loopgraph.js").read_text()
+    return f"<style>{css}</style>{LOOP_INK if ink else ''}<script>{js}</script>"
 BODY_BLOCKS = ("caution", "warning", "note", "changed", "row")      # blocks whose body is more Markdown
 
 
@@ -315,6 +380,7 @@ class Sheet:
         self.heads, self.hi = [], 0               # the outline, and how far the render has read it
         self.thesis = {}                          # part index -> its :::part thesis
         self.cur_part = None
+        self.loops = 0                            # :::loop blocks; the page carries the component when there is one
 
     def prepare(self, lines):
         self.heads, self.hi = outline(lines, self.m), 0
@@ -555,7 +621,7 @@ class Sheet:
 
     def _directive(self, kind, arg, body):
         text = "\n".join(body)
-        if not text.strip() and kind not in ("changed", "row", "part"):
+        if not text.strip() and kind not in ("changed", "row", "part") and not (kind == "loop" and "src=" in arg):
             raise SystemExit(f"sheet: :::{kind} {arg} is empty")
         if kind == "table":
             rows = [l for l in body if l.strip().startswith("|")]
@@ -610,6 +676,10 @@ class Sheet:
         if kind == "plot":
             wide = re.search(r"^\s*size\s+wide\b", text, re.M)
             return self.figure(handbook.plot(text, self.base), arg, "wide" if wide else "")
+        if kind == "loop":
+            cap, g = loop_source(arg, body, self.base)
+            self.loops += 1
+            return self.figure(f'<div class="lg" data-loopgraph><script type="application/json">{g}</script></div>', cap, "wide")
         raise SystemExit(f"sheet: unknown block :::{kind}")
 
 
@@ -773,7 +843,7 @@ def render(src_path, overrides=()):
     if not theme(sheet.m)["invert"]:                 # a figure's white fills take the paper, so boxes sit on it
         content = content.replace("fill: #ffffff", "fill: var(--paper)").replace('fill="#ffffff"', 'fill="var(--paper)"')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>{title}</title><style>{css(sheet.m)}</style></head><body>'
-            f'<div class="edgetab">{tab}</div>{head}<main>{content}</main></body></html>')
+            f'<div class="edgetab">{tab}</div>{head}<main>{content}</main>{loop_assets(True) if sheet.loops else ""}</body></html>')
 
 
 def main():

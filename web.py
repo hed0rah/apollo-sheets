@@ -496,6 +496,18 @@ class Page(sheet.Sheet):
                 f'<ol class="trace-steps">{"".join(lis)}</ol></div>'
                 f'<figcaption class="cap" data-n="{n}">{inline(caption) if caption else ""}</figcaption></figure>')
 
+    def loop(self, arg, body):
+        """an agent loop: the graph laid out, its run replayed, state beside it (loopgraph.js)"""
+        cap, g = sheet.loop_source(arg, body, self.base)
+        self.loops += 1
+        self.figs += 1
+        n = f"{self.chapnum}.{self.figs}"
+        a, label = f"fig-{n}", f"Fig. {n}"
+        self.ids[a] = label
+        self.items.append((a, label, cap))
+        return (f'<figure class="lg" data-loopgraph id="{a}"><script type="application/json">{g}</script>'
+                f'<figcaption class="cap" data-n="{n}">{inline(cap) if cap else ""}</figcaption></figure>')
+
     def blocks(self, lines):
         # code blocks become the template's code panel; everything else is sheet's
         out = super().blocks(lines)
@@ -518,6 +530,8 @@ class Page(sheet.Sheet):
                     f'<ul class="check">{"".join(items)}</ul></div>')
         if kind == "trace":
             return self.trace(arg, body)
+        if kind == "loop":
+            return self.loop(arg, body)
         if kind == "glossary":
             terms = self.glossary_terms(body)
             items = []
@@ -723,7 +737,7 @@ def render(src_path, overrides=()):
   </main>
 </div>
 {spy}
-{THEME_JS}{PAGE_JS}</body>
+{THEME_JS}{PAGE_JS}{sheet.loop_assets() if page.loops else ""}</body>
 </html>
 """
     for bad in ("\u2014", "\u2013"):

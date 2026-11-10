@@ -1,0 +1,25 @@
+{
+  "id": "minimal",
+  "title": "The smallest loop",
+  "state": {"attempts": {"reducer": "sum"}, "answer": {"reducer": "replace"}},
+  "nodes": [
+    {"id": "start", "kind": "start"},
+    {"id": "try", "kind": "llm", "label": "try", "writes": ["answer", "attempts"]},
+    {"id": "ok", "kind": "router", "label": "good enough?"},
+    {"id": "end", "kind": "end"}
+  ],
+  "edges": [
+    {"from": "start", "to": "try"},
+    {"from": "try", "to": "ok"},
+    {"from": "ok", "to": "try", "kind": "loop", "max": 3, "counter": "attempts", "when": "no"},
+    {"from": "ok", "to": "end", "kind": "cond", "when": "yes"}
+  ],
+  "run": [
+    {"node": "start"},
+    {"node": "try", "writes": {"answer": "draft 1", "attempts": 1}},
+    {"node": "ok", "note": "Not yet."},
+    {"node": "try", "via": "ok", "writes": {"answer": "draft 2", "attempts": 1}},
+    {"node": "ok"},
+    {"node": "end", "via": "ok"}
+  ]
+}

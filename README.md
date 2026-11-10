@@ -16,7 +16,7 @@ sparklines, all drawn from text.
 | [apollo](examples/apollo/apollo.md): the reference sheet, every block beside its source | [rc-filter](examples/rc-filter/rc-filter.md): diagram, math, log plot | [lander](examples/lander/lander.md): timeline, checklists, cream paper |
 
 Start a new sheet from [template.md](template.md). [kitchen-sink](examples/kitchen-sink/kitchen-sink.md) and
-[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens. [CATALOG.md](CATALOG.md) chooses a
+[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens. [loopgraph](examples/loopgraph/loopgraph.md) shows `:::loop`, agent loops drawn from JSON with a replayed run ([PDF](examples/loopgraph/loopgraph.pdf); `python web.py examples/loopgraph/loopgraph.md` builds the page, which is the point); its [guide](examples/loopgraph/guide.md) tells a coding agent how to build an interactive document with these blocks. [CATALOG.md](CATALOG.md) chooses a
 figure by the job it does, with a snippet for each; `python catalog_check.py` renders every snippet on one sheet.
 
 ## Requirements
@@ -89,6 +89,7 @@ Quote values that contain a colon.
 | `:::part` | right after a `#` heading: `thesis: one or two sentences` set under the part's title |
 | `## Heading {#id status=built}` | an anchor of its own and a status: `built`, `prototyped`, `designed`, `speculative`; a mark beside the heading on paper, a pill on the page, a dot in the rail |
 | `:::trace Caption` | one thing walked through a system: `step "label" \| what happens \| #anchor`, a line a step; a numbered table on paper, a scrubber on the page |
+| `:::loop Caption \| src=graph.json` | an agent loop from a JSON graph (or the JSON as the body): nodes, conditional edges, bounded loops, subgraphs, human interrupts, checkpoints, a recorded run; laid out by `loopgraph/loopgraph.js`, which the page carries; a replay with state, limits and checkpoints on the page, the graph at rest in ink on paper. Set `LOOPGRAPH=` to use another copy of the component |
 | `:::glossary` | `term \| definition`, a line a term: a table on paper; on the page, the first use of each term in the text gets a card on hover, pinned by a click |
 | `![Caption](fig.svg){width=half}` | a numbered figure; `width=third` too; `gray=1` prints a dark screen capture in black ink |
 | `$inline$`, `$$display$$`, `\boxed{}` | TeX through matplotlib mathtext; displays are numbered |
