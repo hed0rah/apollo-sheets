@@ -187,7 +187,7 @@ LOOP_INK = """<style>.lg{--ink-2:#2b2b2b;--ink-3:#5a5a5a;--rule:#c9c9c9;--rule-2
 --slate-soft:#f1f1f1;--slate:var(--ink);--slate-2:#444;--teal:var(--ink);--orange:var(--ink);--ok:var(--ink);--warn:#3a3a3a;
 --crit:var(--ink);--sans:"Letter",sans-serif;--mono:"Type",monospace;margin:0;border-color:#8f8f8f;border-radius:0}
 .lg .lg-side,.lg .lg-ctl,.lg .lg-chart,.lg .lg-card{display:none!important}.lg .lg-body-row{display:block}
-.lg .lg-canvas{background:none;padding:.05in}.lg .lg-head{padding:.04in .08in}.lg .lg-svg{width:auto!important;height:auto!important;max-width:100%;max-height:7.4in}.lg{break-inside:avoid}</style>"""
+.lg .lg-canvas{background:none;padding:.05in}.lg .lg-head{padding:.04in .08in}.lg .lg-svg{width:100%!important;height:auto!important;max-height:7.4in}.lg{break-inside:avoid}</style>"""
 
 
 def loop_source(arg, body, base):
@@ -609,7 +609,9 @@ class Sheet:
             title = f'<div class="ttitle">Table {self.sec}-{self.tab}.&ensp;{inline(caption)}</div>'
         th = "".join(f"<th>{inline(c)}</th>" for c in head)
         tr = "".join("<tr>" + "".join(f"<td>{inline(c)}</td>" for c in r) + "</tr>" for r in body)
-        return f'<div class="table">{title}<table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
+        # a table over eight rows may break between rows rather than jump a page and leave the last one blank
+        cls = "table long" if len(body) > 8 else "table"
+        return f'<div class="{cls}">{title}<table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
 
     def directive(self, kind, arg, body):
         try:

@@ -60,7 +60,10 @@ figure.wide .art svg { width: 100%; }
 figcaption { font: 9pt "Roman"; margin-top: 0.09in; }
 
 .table { margin: 0.1in 0 0.14in; break-inside: avoid; }
-.ttitle { text-align: center; font: 9pt "Roman"; margin-bottom: 0.04in; }
+.table.long { break-inside: auto; }                  /* a long table breaks between rows, its header repeated */
+.table.long tr { break-inside: avoid; }
+.table.long thead { display: table-header-group; }
+.ttitle { text-align: center; font: 9pt "Roman"; margin-bottom: 0.04in; break-after: avoid; }
 table { border-collapse: collapse; margin: 0 auto; border: 1.6px solid var(--ink); font: 8.4pt/1.25 "Roman"; }
 th { font-weight: normal; border: 0.7px solid var(--ink); border-bottom: 1.4px solid var(--ink); padding: 2px 8px; }
 td { border: 0.7px solid var(--ink); padding: 1.5px 8px; vertical-align: top; }
