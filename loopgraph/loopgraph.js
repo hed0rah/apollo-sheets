@@ -640,6 +640,11 @@
   }
   function counter(F, name, s, edgeI) {
     if (!s) return 0;
+    var dot = name ? name.indexOf('.') : -1;
+    if (dot > 0 && F.g.state[name.slice(0, dot)]) {       // a field of an object key: spent.llm_calls
+      var o = s.state[name.slice(0, dot)];
+      return o && typeof o === 'object' ? +o[name.slice(dot + 1)] || 0 : 0;
+    }
     var st = name && F.g.state[name];
     if (st && st.reducer === 'sum') return +s.state[name] || 0;
     if (st && st.reducer === 'append') return (s.state[name] || []).length;
@@ -757,7 +762,7 @@
       // a limit is a number or {max, of}: "of" names the state key or loop counter it bounds.
       // recursion_limit counts super-steps; a limit that bounds nothing in the run is a fixed setting
       var L = g.limits[k], max = +(typeof L === 'object' ? L.max : L), of = typeof L === 'object' && L.of ? L.of : k, v;
-      if (g.state[of] || g.edges.some(function (e) { return e.counter === of; })) v = counter(F, of, s, undefined, true);
+      if (g.state[of] || g.state[of.split('.')[0]] || g.edges.some(function (e) { return e.counter === of; })) v = counter(F, of, s);
       else if (/^(recursion_limit|super_?steps)$/.test(k)) v = at;
       else { var fx = h('div', 'lg-meter lg-fixed', LB); h('span', 'lg-meter-k', fx, k); h('span', 'lg-meter-bar', fx); h('span', 'lg-meter-v', fx, String(max)); return; }
       var m = h('div', 'lg-meter' + (v >= max ? ' is-max' : v >= max * 0.8 ? ' is-near' : ''), LB);
@@ -890,6 +895,7 @@
     try { g = normalise(JSON.parse(src.textContent)); }
     catch (err) { h('pre', 'lg-error', fig, String(err.message || err)); return; }
     var F = { fig: fig, g: g, id: 'lg' + (++figN), at: 0 };
+    if (fig.hasAttribute('data-collapse')) g.groups.forEach(function (gr) { gr.collapsed = true; });   // paper: the shape, not the detail
     fig.classList.add('lg-ready');
     var head = h('div', 'lg-head', fig);
     var tt = h('div', 'lg-title', head);
