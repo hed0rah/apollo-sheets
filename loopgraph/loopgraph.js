@@ -9,6 +9,7 @@
   var EDGE_NAME = { next: 'next', cond: 'conditional', loop: 'loop, bounded', fail: 'failure path',
                     resume: 'human answer', send: 'fan-out' };
   var GAP_MAIN = 58, GAP_CROSS = 26, LANE = 24, PAD = 18, GROUP_HEAD = 26, GROUP_PAD = 16;
+  var PAPER = false;                            // set while a paper figure is laid out: tighter ranks
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   var figN = 0;
 
@@ -179,7 +180,7 @@
       for (var d2 = nr - 2; d2 >= 0; d2--) { bary(layers[d2], succOf); setPos(); }
     }
     // main axis: ranks side by side; a rank of only waypoints and ports is thin
-    var gap = layers.map(function (L) { return L.every(virt) ? 26 : GAP_MAIN; });
+    var gap = layers.map(function (L) { return L.every(virt) ? (PAPER ? 16 : 26) : (PAPER ? 30 : GAP_MAIN); });
     if (labelW) fwd.forEach(function (e) {
       var r = rank[e.u], first = e.chain.length ? e.chain[0] : e.v;
       if (rank[first] === r + 1 && e.e && !virt(e.u)) gap[r] = Math.max(gap[r], labelW(e.e) + 30);
@@ -250,7 +251,7 @@
     function labelW(e) {
       var l = e.kind === 'loop' ? '' : chipText(e);
       if (!l) return 0;
-      return LR ? tw(l, '10.5px ' + F.mono) + 14 : 40;
+      return LR ? tw(l, '10.5px ' + F.mono) + 14 : (PAPER ? 30 : 40);
     }
     function groupNodeSize(gr) {
       var n = g.nodes.filter(function (x) { return x.group === gr.id; }).length;
@@ -387,7 +388,23 @@
 
   // ---- drawing ------------------------------------------------------------------------------------------------
   function draw(F) {
-    var g = F.g, Lo = F.Lo = layout(g, F.fig), id = F.id;
+    var g = F.g, id = F.id;
+    PAPER = !!F.paper;
+    if (F.paper) {
+      // on paper the box is a page column: lay it out both ways and keep the one that prints larger
+      var best = null;
+      ['LR', 'TB'].forEach(function (d) {
+        g.dir = d;
+        var L = layout(g, F.fig), k = Math.min(F.paper[0] / L.width, F.paper[1] / L.height);
+        if (!best || k > best.k) best = { k: k, d: d, L: L };
+      });
+      g.dir = best.d;
+      F.Lo = best.L;
+    } else {
+      F.Lo = layout(g, F.fig);
+    }
+    PAPER = false;
+    var Lo = F.Lo;
     var svg = F.svg;
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     svg.setAttribute('viewBox', '0 0 ' + Math.ceil(Lo.width) + ' ' + Math.ceil(Lo.height));
@@ -470,6 +487,19 @@
       else drawNode(F, gN, g.byId[nid], b);
     });
     legend(F);
+    // the drawing's own extent, badges and chips included, so nothing at the edge is clipped
+    try {
+      var bb = svg.getBBox();
+      if (bb.width > 0 && bb.height > 0) {
+        var x0 = Math.min(0, bb.x - 6), y0 = Math.min(0, bb.y - 6);
+        var w = Math.max(Lo.width, bb.x + bb.width + 6) - x0, hh = Math.max(Lo.height, bb.y + bb.height + 6) - y0;
+        svg.setAttribute('viewBox', x0.toFixed(1) + ' ' + y0.toFixed(1) + ' ' + Math.ceil(w) + ' ' + Math.ceil(hh));
+        svg.setAttribute('width', Math.ceil(w));
+        svg.setAttribute('height', Math.ceil(hh));
+        Lo.width = w; Lo.height = hh;
+        fit(F);
+      }
+    } catch (e) { /* not rendered yet: the computed extent stands */ }
   }
 
   function fit(F) {
@@ -895,7 +925,10 @@
     try { g = normalise(JSON.parse(src.textContent)); }
     catch (err) { h('pre', 'lg-error', fig, String(err.message || err)); return; }
     var F = { fig: fig, g: g, id: 'lg' + (++figN), at: 0 };
-    if (fig.hasAttribute('data-collapse')) g.groups.forEach(function (gr) { gr.collapsed = true; });   // paper: the shape, not the detail
+    if (fig.hasAttribute('data-collapse')) {         // paper: the shape, not the detail, in a 6.5 x 7.4 in box
+      g.groups.forEach(function (gr) { gr.collapsed = true; });
+      F.paper = [624, 710];
+    }
     fig.classList.add('lg-ready');
     var head = h('div', 'lg-head', fig);
     var tt = h('div', 'lg-title', head);
