@@ -679,7 +679,8 @@ class Sheet:
         if kind == "loop":
             cap, g = loop_source(arg, body, self.base)
             self.loops += 1
-            return self.figure(f'<div class="lg" data-loopgraph><script type="application/json">{g}</script></div>', cap, "wide")
+            # on paper every subgraph is drawn collapsed: the loop's shape at a size that reads; the page has the detail
+            return self.figure(f'<div class="lg" data-loopgraph data-collapse><script type="application/json">{g}</script></div>', cap, "wide")
         raise SystemExit(f"sheet: unknown block :::{kind}")
 
 
