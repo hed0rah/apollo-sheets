@@ -1,0 +1,59 @@
+{
+  "id": "tool-loop",
+  "title": "A tool loop with an approval gate",
+  "dir": "LR",
+  "limits": {"recursion_limit": 25, "steps": 4},
+  "state": {
+    "messages":   {"reducer": "append",  "doc": "the conversation, one item per turn"},
+    "tool_calls": {"reducer": "sum",     "doc": "tool calls made so far"},
+    "draft":      {"reducer": "replace", "doc": "the proposed change"},
+    "verdict":    {"reducer": "replace", "doc": "the reviewer's reading of the raw tool output"},
+    "approved":   {"reducer": "replace", "doc": "the human's answer, bound to a checkpoint"}
+  },
+  "nodes": [
+    {"id": "start", "kind": "start"},
+    {"id": "agent", "kind": "llm", "label": "agent", "sub": "plan or call tools", "doc": "The model reads messages and either asks for tools or proposes a draft.", "reads": ["messages"], "writes": ["messages", "draft"]},
+    {"id": "route", "kind": "router", "label": "should_continue", "doc": "Pure function of state: tool calls pending, a draft ready, or the step budget spent."},
+    {"id": "tools", "kind": "tool", "label": "tools", "sub": "search, read, run", "doc": "Executes every pending tool call; appends the raw results.", "writes": ["messages", "tool_calls"]},
+    {"id": "review", "kind": "llm", "label": "review", "sub": "reads raw output", "tags": ["no tools"], "doc": "A second model call with no tools bound. It reads the raw tool output, not the agent's summary of it.", "reads": ["messages", "draft"], "writes": ["verdict"]},
+    {"id": "approve", "kind": "human", "label": "approve", "sub": "operator's go", "interrupt": "before", "doc": "interrupt_before: the run stops and checkpoints. The approval names that checkpoint, so it cannot approve a different state.", "writes": ["approved"]},
+    {"id": "apply", "kind": "tool", "label": "apply change", "sub": "the one write", "writes": ["messages"]},
+    {"id": "giveup", "kind": "fail", "label": "give up", "sub": "budget spent", "doc": "The bound on the loop, reached: report and stop rather than spin."},
+    {"id": "end", "kind": "end"}
+  ],
+  "edges": [
+    {"from": "start", "to": "agent"},
+    {"from": "agent", "to": "route"},
+    {"from": "route", "to": "tools", "kind": "cond", "when": "tool_calls"},
+    {"from": "tools", "to": "agent", "kind": "loop", "max": 4, "counter": "steps"},
+    {"from": "route", "to": "review", "kind": "cond", "when": "draft ready"},
+    {"from": "route", "to": "giveup", "kind": "fail", "label": "steps = 4"},
+    {"from": "review", "to": "approve"},
+    {"from": "approve", "to": "apply", "kind": "resume", "label": "yes"},
+    {"from": "approve", "to": "agent", "kind": "resume", "label": "no, revise"},
+    {"from": "apply", "to": "end"},
+    {"from": "giveup", "to": "end"}
+  ],
+  "run": [
+    {"node": "start", "t": "00.0s", "writes": {"messages": "user: fix the flaky test"}},
+    {"node": "agent", "t": "01.2s", "writes": {"messages": "ai: call search(\"flaky\")"}, "note": "The model asks for a tool."},
+    {"node": "route", "t": "01.2s"},
+    {"node": "tools", "t": "02.0s", "writes": {"messages": "tool: 3 hits", "tool_calls": 1}, "checkpoint": "c1"},
+    {"node": "agent", "t": "03.1s", "writes": {"messages": "ai: call read(\"test_io.py\")"}, "note": "Round two of the loop: the counter reads 1/4."},
+    {"node": "route", "t": "03.1s"},
+    {"node": "tools", "t": "03.6s", "writes": {"messages": "tool: 212 lines", "tool_calls": 1}, "checkpoint": "c2"},
+    {"node": "agent", "t": "05.4s", "writes": {"messages": "ai: draft ready", "draft": "retry the socket read"}, "note": "A draft instead of a tool call."},
+    {"node": "route", "t": "05.4s"},
+    {"node": "review", "t": "06.9s", "writes": {"verdict": "the raw read shows a race, not a timeout"}, "note": "No tools: it can only read what the tools returned."},
+    {"node": "approve", "t": "07.0s", "checkpoint": "c3", "pause": "waiting on the operator, bound to c3", "note": "The run stops here and saves c3. Playback stops too: press resume."},
+    {"node": "agent", "via": "approve", "t": "41.0s", "writes": {"approved": "no: fix the race", "messages": "human: no, fix the race"}, "note": "Rejected: back to the agent with the reason."},
+    {"node": "route", "t": "41.0s"},
+    {"node": "tools", "t": "42.2s", "writes": {"messages": "tool: lock added", "tool_calls": 1}},
+    {"node": "agent", "t": "43.9s", "writes": {"messages": "ai: draft ready", "draft": "guard the socket with a lock"}},
+    {"node": "route", "t": "43.9s"},
+    {"node": "review", "t": "45.0s", "writes": {"verdict": "the race is closed"}},
+    {"node": "approve", "t": "45.1s", "checkpoint": "c4", "pause": "waiting on the operator, bound to c4"},
+    {"node": "apply", "t": "58.3s", "writes": {"approved": "yes (c4)", "messages": "tool: committed"}},
+    {"node": "end", "t": "58.4s"}
+  ]
+}

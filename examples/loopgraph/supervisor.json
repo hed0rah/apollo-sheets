@@ -1,0 +1,71 @@
+{
+  "id": "supervisor",
+  "title": "A supervisor and its workers",
+  "dir": "LR",
+  "limits": {"recursion_limit": 40, "handoffs": 6, "fix_attempts": 3},
+  "state": {
+    "messages":     {"reducer": "append", "doc": "the shared transcript"},
+    "handoffs":     {"reducer": "sum", "doc": "times the floor came back to the supervisor"},
+    "fix_attempts": {"reducer": "sum", "doc": "test-fix rounds for the current change"},
+    "artifacts":    {"reducer": "merge", "doc": "named outputs: notes, a patch, a test log"},
+    "approved":     {"reducer": "replace", "doc": "the reviewer's answer"}
+  },
+  "groups": [
+    {"id": "research", "label": "researcher", "collapsed": true, "doc": "A worker graph of its own: search, read, take notes. Collapsed, the run steps through it as one node; expand it to see inside."}
+  ],
+  "nodes": [
+    {"id": "start", "kind": "start"},
+    {"id": "sup", "kind": "llm", "label": "supervisor", "sub": "who works next", "writes": ["messages", "handoffs"]},
+    {"id": "route", "kind": "router", "label": "next worker"},
+    {"id": "search", "kind": "tool", "label": "search", "group": "research"},
+    {"id": "read", "kind": "tool", "label": "read sources", "group": "research"},
+    {"id": "notes", "kind": "llm", "label": "notes", "group": "research", "tags": ["no tools"], "writes": ["artifacts"]},
+    {"id": "coder", "kind": "llm", "label": "coder", "sub": "writes the patch", "writes": ["artifacts", "messages"]},
+    {"id": "tests", "kind": "tool", "label": "run tests", "sub": "sandboxed", "writes": ["artifacts", "fix_attempts"]},
+    {"id": "pass", "kind": "router", "label": "tests pass?"},
+    {"id": "review", "kind": "human", "label": "review", "sub": "merge approval", "interrupt": "before", "writes": ["approved"]},
+    {"id": "merge", "kind": "store", "label": "merge", "sub": "main branch"},
+    {"id": "limit", "kind": "fail", "label": "hand back", "sub": "handoff limit"},
+    {"id": "end", "kind": "end"}
+  ],
+  "edges": [
+    {"from": "start", "to": "sup"},
+    {"from": "sup", "to": "route"},
+    {"from": "route", "to": "search", "kind": "cond", "when": "needs facts"},
+    {"from": "search", "to": "read"},
+    {"from": "read", "to": "notes"},
+    {"from": "notes", "to": "sup", "kind": "loop", "max": 6, "counter": "handoffs"},
+    {"from": "route", "to": "coder", "kind": "cond", "when": "needs code"},
+    {"from": "coder", "to": "tests"},
+    {"from": "tests", "to": "pass"},
+    {"from": "pass", "to": "coder", "kind": "loop", "max": 3, "counter": "fix_attempts", "when": "red"},
+    {"from": "pass", "to": "sup", "kind": "loop", "max": 6, "counter": "handoffs", "when": "green"},
+    {"from": "route", "to": "review", "kind": "cond", "when": "done"},
+    {"from": "route", "to": "limit", "kind": "fail", "label": "handoffs = 6"},
+    {"from": "review", "to": "merge", "kind": "resume", "label": "approve"},
+    {"from": "review", "to": "sup", "kind": "resume", "label": "changes"},
+    {"from": "merge", "to": "end"},
+    {"from": "limit", "to": "end"}
+  ],
+  "run": [
+    {"node": "start", "writes": {"messages": "user: add rate limiting to the API"}},
+    {"node": "sup", "writes": {"messages": "supervisor: research first"}},
+    {"node": "route"},
+    {"node": "search", "note": "Into the researcher. Collapsed, the subgraph lights as one node."},
+    {"node": "read"},
+    {"node": "notes", "writes": {"artifacts": {"notes": "token bucket, 60/min, per key"}}},
+    {"node": "sup", "via": "notes", "writes": {"handoffs": 1, "messages": "supervisor: now the code"}},
+    {"node": "route"},
+    {"node": "coder", "writes": {"artifacts": {"patch": "limiter.py, +84"}}},
+    {"node": "tests", "writes": {"artifacts": {"tests": "2 failed"}, "fix_attempts": 1}},
+    {"node": "pass"},
+    {"node": "coder", "via": "pass", "writes": {"artifacts": {"patch": "limiter.py, +91"}}, "note": "Red: the inner loop, 1 of 3."},
+    {"node": "tests", "writes": {"artifacts": {"tests": "all pass"}, "fix_attempts": 1}, "checkpoint": "c1"},
+    {"node": "pass"},
+    {"node": "sup", "via": "pass", "writes": {"handoffs": 1}},
+    {"node": "route"},
+    {"node": "review", "checkpoint": "c2", "pause": "the reviewer reads the patch at c2"},
+    {"node": "merge", "writes": {"approved": "yes, at c2"}},
+    {"node": "end"}
+  ]
+}

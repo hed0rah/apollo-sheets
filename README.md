@@ -16,7 +16,7 @@ sparklines, all drawn from text.
 | [apollo](examples/apollo/apollo.md): the reference sheet, every block beside its source | [rc-filter](examples/rc-filter/rc-filter.md): diagram, math, log plot | [lander](examples/lander/lander.md): timeline, checklists, cream paper |
 
 Start a new sheet from [template.md](template.md). [kitchen-sink](examples/kitchen-sink/kitchen-sink.md) and
-[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens. [CATALOG.md](CATALOG.md) chooses a
+[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens. [loopgraph](examples/loopgraph/loopgraph.md) shows `:::loop`, agent loops drawn from JSON with a replayed run ([PDF](examples/loopgraph/loopgraph.pdf); `python web.py examples/loopgraph/loopgraph.md` builds the page, which is the point); its [guide](examples/loopgraph/guide.md) tells a coding agent how to build an interactive document with these blocks. [CATALOG.md](CATALOG.md) chooses a
 figure by the job it does, with a snippet for each; `python catalog_check.py` renders every snippet on one sheet.
 
 ## Requirements

@@ -187,7 +187,7 @@ LOOP_INK = """<style>.lg{--ink-2:#2b2b2b;--ink-3:#5a5a5a;--rule:#c9c9c9;--rule-2
 --slate-soft:#f1f1f1;--slate:var(--ink);--slate-2:#444;--teal:var(--ink);--orange:var(--ink);--ok:var(--ink);--warn:#3a3a3a;
 --crit:var(--ink);--sans:"Letter",sans-serif;--mono:"Type",monospace;margin:0;border-color:#8f8f8f;border-radius:0}
 .lg .lg-side,.lg .lg-ctl,.lg .lg-chart,.lg .lg-card{display:none!important}.lg .lg-body-row{display:block}
-.lg .lg-canvas{background:none;padding:.05in}.lg .lg-head{padding:.04in .08in}.lg .lg-svg{max-width:100%;height:auto!important}</style>"""
+.lg .lg-canvas{background:none;padding:.05in}.lg .lg-head{padding:.04in .08in}.lg .lg-svg{width:auto!important;height:auto!important;max-width:100%;max-height:7.4in}.lg{break-inside:avoid}</style>"""
 
 
 def loop_source(arg, body, base):
