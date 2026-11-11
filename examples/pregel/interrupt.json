@@ -1,0 +1,52 @@
+{
+ "title": "A review node with two questions",
+ "node": "review",
+ "code": [
+  "def review(state):",
+  "    side = expensive(state[\"draft\"])",
+  "    ok = interrupt({\"approve\": state[\"draft\"]})",
+  "    note = interrupt(\"a note?\")",
+  "    return {\"ok\": ok, \"note\": note}"
+ ],
+ "runs": [
+  {"label": "graph.invoke({}, config)",
+   "events": [
+    {"kind": "step", "step": 2, "node": "review", "note": "write ran in step 1 and set draft to \"v1\""},
+    {"kind": "line", "line": 2, "note": "side is computed, in memory only"},
+    {"kind": "interrupt", "line": 3, "index": 0, "value": {"approve": "v1"}},
+    {"kind": "write", "channel": "__interrupt__", "value": [{"value": {"approve": "v1"}, "id": "8d6793a14926512c2806af4ac430ff8b"}]},
+    {"kind": "discard", "note": "side, and anything else review did, is dropped: an interrupted task writes no state"},
+    {"kind": "checkpoint", "id": "1f1ddeda-dd16-6de8-8001-267582efcce1", "pending": [["review", "__interrupt__", "{approve: v1}"]],
+     "note": "no new checkpoint; the interrupt is a pending write on the one review started from"},
+    {"kind": "return", "value": {"draft": "v1", "__interrupt__": [{"value": {"approve": "v1"}}]}}
+   ]},
+  {"label": "graph.invoke(Command(resume=True), config)", "resume": [true],
+   "events": [
+    {"kind": "resume", "value": true},
+    {"kind": "write", "channel": "__resume__", "value": true, "note": "by the null task, on the same checkpoint"},
+    {"kind": "step", "step": 2, "node": "review", "note": "the same step again; review starts over from line 1"},
+    {"kind": "line", "line": 2, "note": "side is computed again: work before an interrupt repeats on every resume"},
+    {"kind": "interrupt", "line": 3, "index": 0, "resumed": true, "value": true},
+    {"kind": "interrupt", "line": 4, "index": 1, "value": "a note?"},
+    {"kind": "write", "channel": "__resume__", "value": [true], "note": "the task's own list of the values used so far"},
+    {"kind": "write", "channel": "__interrupt__", "value": [{"value": "a note?", "id": "607a55d860fde9a8599c3594feb990af"}],
+     "note": "it replaces the first; since 1.2.20 each interrupt() call has its own id (through 1.2.19 they shared one)"},
+    {"kind": "discard", "note": "side and ok are dropped again"},
+    {"kind": "return", "value": {"draft": "v1", "__interrupt__": [{"value": "a note?"}]}}
+   ]},
+  {"label": "graph.invoke(Command(resume=\"fine\"), config)", "resume": [true, "fine"],
+   "events": [
+    {"kind": "resume", "value": "fine", "note": "the new value goes after the one the task kept"},
+    {"kind": "write", "channel": "__resume__", "value": "fine", "note": "by the null task"},
+    {"kind": "step", "step": 2, "node": "review", "note": "a third time from line 1"},
+    {"kind": "line", "line": 2},
+    {"kind": "interrupt", "line": 3, "index": 0, "resumed": true, "value": true},
+    {"kind": "interrupt", "line": 4, "index": 1, "resumed": true, "value": "fine"},
+    {"kind": "line", "line": 5, "note": "the node finishes"},
+    {"kind": "write", "channel": "ok", "value": true},
+    {"kind": "write", "channel": "note", "value": "fine"},
+    {"kind": "checkpoint", "id": "1f1ddeda-dd1d-6d24-8002-6b649a574edb", "note": "the step completes: step 2's checkpoint, next is nothing"},
+    {"kind": "return", "value": {"draft": "v1", "ok": true, "note": "fine"}}
+   ]}
+ ]
+}

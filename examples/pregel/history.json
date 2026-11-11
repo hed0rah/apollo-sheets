@@ -1,0 +1,156 @@
+{
+ "title": "Two interrupts, then a fork",
+ "thread": "t",
+ "head": "1f1ddeda-dd20-6482-8002-72b64a000d62",
+ "checkpoints": [
+  {
+   "id": "1f1ddeda-dd13-6199-bfff-20c6d3f7b921",
+   "parent": null,
+   "step": -1,
+   "source": "input",
+   "next": [
+    "__start__"
+   ],
+   "values": {},
+   "pending_writes": [
+    [
+     "f0f5b1f5-5a5d-08bf-613d-823f0c145de6",
+     "branch:to:write",
+     null
+    ]
+   ],
+   "tasks": []
+  },
+  {
+   "id": "1f1ddeda-dd15-6302-8000-5496a69d90df",
+   "parent": "1f1ddeda-dd13-6199-bfff-20c6d3f7b921",
+   "step": 0,
+   "source": "loop",
+   "next": [
+    "write"
+   ],
+   "values": {},
+   "pending_writes": [
+    [
+     "ef1d5f9c-033c-c0ee-1eb0-6f364f045058",
+     "draft",
+     "v1"
+    ],
+    [
+     "ef1d5f9c-033c-c0ee-1eb0-6f364f045058",
+     "branch:to:review",
+     null
+    ]
+   ],
+   "tasks": []
+  },
+  {
+   "id": "1f1ddeda-dd16-6de8-8001-267582efcce1",
+   "parent": "1f1ddeda-dd15-6302-8000-5496a69d90df",
+   "step": 1,
+   "source": "loop",
+   "next": [
+    "review"
+   ],
+   "values": {
+    "draft": "v1"
+   },
+   "pending_writes": [
+    [
+     "00000000-0000-0000-0000-000000000000",
+     "__resume__",
+     "fine"
+    ],
+    [
+     "df458550-8074-dda7-96db-49b98529b0a5",
+     "__resume__",
+     [
+      true,
+      "fine"
+     ]
+    ],
+    [
+     "df458550-8074-dda7-96db-49b98529b0a5",
+     "__interrupt__",
+     [
+      {
+       "value": "a note?",
+       "id": "607a55d860fde9a8599c3594feb990af"
+      }
+     ]
+    ],
+    [
+     "df458550-8074-dda7-96db-49b98529b0a5",
+     "ok",
+     true
+    ],
+    [
+     "df458550-8074-dda7-96db-49b98529b0a5",
+     "note",
+     "fine"
+    ]
+   ],
+   "tasks": [
+    {
+     "name": "review",
+     "interrupts": [
+      "a note?"
+     ]
+    }
+   ],
+   "label": "interrupted twice, resumed twice"
+  },
+  {
+   "id": "1f1ddeda-dd1d-6d24-8002-6b649a574edb",
+   "parent": "1f1ddeda-dd16-6de8-8001-267582efcce1",
+   "step": 2,
+   "source": "loop",
+   "next": [],
+   "values": {
+    "draft": "v1",
+    "ok": true,
+    "note": "fine"
+   },
+   "pending_writes": [],
+   "tasks": [],
+   "label": "done"
+  },
+  {
+   "id": "1f1ddeda-dd20-6482-8002-72b64a000d62",
+   "parent": "1f1ddeda-dd16-6de8-8001-267582efcce1",
+   "step": 2,
+   "source": "update",
+   "next": [
+    "review"
+   ],
+   "values": {
+    "draft": "v2"
+   },
+   "pending_writes": [
+    [
+     "e1ad3b7d-77a6-91fb-da13-9836f2407f12",
+     "__interrupt__",
+     [
+      {
+       "value": {
+        "approve": "v2"
+       },
+       "id": "2e46be0e8d82521a27826e457e958cc7"
+      }
+     ]
+    ]
+   ],
+   "tasks": [
+    {
+     "name": "review",
+     "interrupts": [
+      {
+       "approve": "v2"
+      }
+     ]
+    }
+   ],
+   "label": "update_state(draft=\"v2\"), then invoke(None)"
+  }
+ ]
+}

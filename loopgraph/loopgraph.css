@@ -259,3 +259,10 @@
   .lg-canvas{background:none} .lg-panes{max-height:none}
   .lg{break-inside:avoid}
 }
+
+/* driven from outside: a node about to run, and a graph with no panel of its own (data-bare) */
+.lg-node.is-next .lg-body{stroke:var(--k);stroke-width:1.8;stroke-dasharray:4 3}
+.lg-running .lg-node.is-next{opacity:1}
+.lg[data-bare]{margin:0;border:0;border-radius:0}
+.lg[data-bare] .lg-side,.lg[data-bare] .lg-ctl,.lg[data-bare] .lg-chart,.lg[data-bare] .lg-head{display:none}
+.lg[data-bare] .lg-body-row{display:block}

@@ -509,6 +509,21 @@ class Page(sheet.Sheet):
         return (f'<figure class="lg" data-loopgraph id="{a}"><script type="application/json">{g}</script>'
                 f'<figcaption class="cap" data-n="{n}">{inline(cap) if cap else ""}</figcaption></figure>')
 
+    def pregel(self, kind, arg, body):
+        """LangGraph's runtime from a trace, a history or a run script (pregel.js)"""
+        cap, d, opts = sheet.pregel_source(kind, arg, body, self.base)
+        self.pregels += 1
+        if kind == "superstep" and '"graph"' in d:
+            self.loops += 1                       # its graph pane is a loopgraph
+        self.figs += 1
+        n = f"{self.chapnum}.{self.figs}"
+        a, label = f"fig-{n}", f"Fig. {n}"
+        self.ids[a] = label
+        self.items.append((a, label, cap))
+        attrs = "".join(f' data-{k}="{html.escape(v)}"' for k, v in opts.items() if k in ("step", "channel"))
+        return (f'<figure data-pregel="{kind}"{attrs} id="{a}"><script type="application/json">{d}</script>'
+                f'<figcaption class="cap" data-n="{n}">{inline(cap) if cap else ""}</figcaption></figure>')
+
     def blocks(self, lines):
         # code blocks become the template's code panel; everything else is sheet's
         out = super().blocks(lines)
@@ -533,6 +548,8 @@ class Page(sheet.Sheet):
             return self.trace(arg, body)
         if kind == "loop":
             return self.loop(arg, body)
+        if kind in sheet.PREGEL_KINDS:
+            return self.pregel(kind, arg, body)
         if kind == "glossary":
             terms = self.glossary_terms(body)
             items = []
@@ -738,7 +755,7 @@ def render(src_path, overrides=()):
   </main>
 </div>
 {spy}
-{THEME_JS}{PAGE_JS}{sheet.loop_assets() if page.loops else ""}</body>
+{THEME_JS}{PAGE_JS}{sheet.loop_assets() if page.loops else ""}{sheet.pregel_assets() if page.pregels else ""}</body>
 </html>
 """
     for bad in ("\u2014", "\u2013"):
