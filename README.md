@@ -16,7 +16,7 @@ sparklines, all drawn from text.
 | [apollo](examples/apollo/apollo.md): the reference sheet, every block beside its source | [rc-filter](examples/rc-filter/rc-filter.md): diagram, math, log plot | [lander](examples/lander/lander.md): timeline, checklists, cream paper |
 
 Start a new sheet from [template.md](template.md). [kitchen-sink](examples/kitchen-sink/kitchen-sink.md) and
-[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens. [loopgraph](examples/loopgraph/loopgraph.md) shows `:::loop`, agent loops drawn from JSON with a replayed run ([PDF](examples/loopgraph/loopgraph.pdf); `python web.py examples/loopgraph/loopgraph.md` builds the page, which is the point); its [guide](examples/loopgraph/guide.md) tells a coding agent how to build an interactive document with these blocks. [CATALOG.md](CATALOG.md) chooses a
+[custom-figure](examples/custom-figure/custom-figure.md) are smaller specimens. [pregel](examples/pregel/pregel.md) shows LangGraph's runtime (supersteps, Sends, reducers, checkpoints, interrupts) from captured runs. [loopgraph](examples/loopgraph/loopgraph.md) shows `:::loop`, agent loops drawn from JSON with a replayed run ([PDF](examples/loopgraph/loopgraph.pdf); `python web.py examples/loopgraph/loopgraph.md` builds the page, which is the point); its [guide](examples/loopgraph/guide.md) tells a coding agent how to build an interactive document with these blocks. [CATALOG.md](CATALOG.md) chooses a
 figure by the job it does, with a snippet for each; `python catalog_check.py` renders every snippet on one sheet.
 
 ## Requirements
@@ -90,6 +90,11 @@ Quote values that contain a colon.
 | `## Heading {#id status=built}` | an anchor of its own and a status: `built`, `prototyped`, `designed`, `speculative`; a mark beside the heading on paper, a pill on the page, a dot in the rail |
 | `:::trace Caption` | one thing walked through a system: `step "label" \| what happens \| #anchor`, a line a step; a numbered table on paper, a scrubber on the page |
 | `:::loop Caption \| src=graph.json` | an agent loop from a JSON graph (or the JSON as the body): nodes, conditional edges, bounded loops, subgraphs, human interrupts, checkpoints, a recorded run; laid out by `loopgraph/loopgraph.js`, which the page carries; a replay with state, limits and checkpoints on the page, the graph at rest in ink on paper. Set `LOOPGRAPH=` to use another copy of the component |
+| `:::superstep Caption \| src=trace.json` | LangGraph's runtime one superstep at a time, from a pregel trace: the tasks (PULL or PUSH) in merge order with their writes, channel versions, `versions_seen`, and why each node does or does not run next; the graph lights in sync when the trace carries one. `pregel/capture.py` records the trace from a real run; the formats are in [examples/pregel](examples/pregel/pregel.md) |
+| `:::fanout Caption \| src=trace.json` | the same trace as columns of supersteps: Sends into PUSH tasks, the gather into a reducer channel in path order, a deferred node waiting |
+| `:::reducer Caption \| src=trace.json \| step=N \| channel=name` | one superstep's writes to one channel, folded in LangGraph's merge order |
+| `:::checkpoints Caption \| src=history.json` | a thread's checkpoints as a tree: sources, forks from `update_state`, pending writes, interrupts, the head |
+| `:::interrupt Caption \| src=run.json` | `interrupt()` and `Command(resume=...)` over the node's code: the node re-running from its first line, resume values matched by call order |
 | `:::glossary` | `term \| definition`, a line a term: a table on paper; on the page, the first use of each term in the text gets a card on hover, pinned by a click |
 | `![Caption](fig.svg){width=half}` | a numbered figure; `width=third` too; `gray=1` prints a dark screen capture in black ink |
 | `$inline$`, `$$display$$`, `\boxed{}` | TeX through matplotlib mathtext; displays are numbered |
