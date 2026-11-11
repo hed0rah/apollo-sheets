@@ -187,15 +187,18 @@ LOOP_INK = """<style>.lg{--ink-2:#2b2b2b;--ink-3:#5a5a5a;--rule:#c9c9c9;--rule-2
 --slate-soft:#f1f1f1;--slate:var(--ink);--slate-2:#444;--teal:var(--ink);--orange:var(--ink);--ok:var(--ink);--warn:#3a3a3a;
 --crit:var(--ink);--sans:"Letter",sans-serif;--mono:"Type",monospace;margin:0;border-color:#8f8f8f;border-radius:0}
 .lg .lg-side,.lg .lg-ctl,.lg .lg-chart,.lg .lg-card{display:none!important}.lg .lg-body-row{display:block}
-.lg .lg-canvas{background:none;padding:.05in}.lg .lg-head{padding:.04in .08in}.lg .lg-svg{width:100%!important;height:auto!important;max-height:7.4in}.lg{break-inside:avoid}</style>"""
+.lg .lg-canvas{background:none;padding:.05in}
+.lg.lg-small .lg-head{display:none}.lg.lg-small{border:0}.lg.lg-small .lg-svg{max-height:1.92in}.lg .lg-head{padding:.04in .08in}.lg .lg-svg{width:100%!important;height:auto!important;max-height:7.4in}.lg{break-inside:avoid}</style>"""
 
 
 def loop_source(arg, body, base):
     """the caption and the checked graph of a :::loop block"""
-    cap, _, opt = (p.strip() for p in arg.partition("|"))
-    m = re.match(r"src=(\S+)$", opt)
-    if m:
-        src = base / m.group(1)
+    parts = [p.strip() for p in arg.split("|")]
+    cap, opts = parts[0], parts[1:]
+    srcs = [o[4:] for o in opts if o.startswith("src=")]
+    flags = {o for o in opts if o and not o.startswith("src=")}      # small: a card figure, beside its text on paper
+    if srcs:
+        src = base / srcs[0]
         if not src.exists():
             raise SystemExit(f"sheet: :::loop {cap}: no file {src}")
         text = src.read_text()
@@ -208,7 +211,7 @@ def loop_source(arg, body, base):
     errs = check_loop(g)
     if errs:
         raise SystemExit(f"sheet: :::loop {cap}:\n  " + "\n  ".join(errs))
-    return cap or g.get("caption", ""), json.dumps(g, ensure_ascii=False).replace("</", "<\\/")
+    return cap or g.get("caption", ""), json.dumps(g, ensure_ascii=False).replace("</", "<\\/"), flags
 
 
 def check_loop(g):
@@ -235,6 +238,15 @@ def check_loop(g):
         errs += [f"run step {i}: writes undeclared key {k}" for k in (s.get("writes") or {}) if k not in g.get("state", {})]
         prev = s.get("node")
     return errs
+
+
+CARD = re.compile(r'(<h[34][^>]*>.*?</h[34]>)((?:(?!<h[1-4][ >]|<figure class="small">).)*?)'
+                  r'(<figure class="small">.*?</figure>)', re.S)
+
+
+def card_figures(html_):
+    """on paper a card's small figure moves up to just under the card's heading, so the card's text wraps beside it"""
+    return CARD.sub(lambda m: '<div class="card">' + m.group(1) + m.group(3) + m.group(2) + '</div>', html_)
 
 
 def loop_assets(ink=False):
@@ -679,8 +691,11 @@ class Sheet:
             wide = re.search(r"^\s*size\s+wide\b", text, re.M)
             return self.figure(handbook.plot(text, self.base), arg, "wide" if wide else "")
         if kind == "loop":
-            cap, g = loop_source(arg, body, self.base)
+            cap, g, flags = loop_source(arg, body, self.base)
             self.loops += 1
+            if "small" in flags:                  # a card figure: floated beside its text, laid out for its own box
+                return self.figure(f'<div class="lg lg-small" data-loopgraph data-collapse data-paper="262 188">'
+                                   f'<script type="application/json">{g}</script></div>', cap, "small")
             # on paper every subgraph is drawn collapsed: the loop's shape at a size that reads; the page has the detail
             return self.figure(f'<div class="lg" data-loopgraph data-collapse><script type="application/json">{g}</script></div>', cap, "wide")
         raise SystemExit(f"sheet: unknown block :::{kind}")
@@ -838,6 +853,7 @@ def render(src_path, overrides=()):
     sheet = Sheet(meta, src_path.parent)
     sheet.prepare(body.splitlines())
     content = sheet.finish(sheet.blocks(body.splitlines()))   # first, so a report's own "# title" can fill the header
+    content = card_figures(content)
     tab = html.escape(str(meta.get("tab", "")))
     head = f'<div class="title">{inline(str(meta.get("title", "")).upper())}</div>'
     if meta.get("by"):

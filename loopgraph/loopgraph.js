@@ -968,7 +968,8 @@
     var F = { fig: fig, g: g, id: 'lg' + (++figN), at: 0 };
     if (fig.hasAttribute('data-collapse')) {         // paper: the shape, not the detail, in a 6.5 x 7.4 in box
       g.groups.forEach(function (gr) { gr.collapsed = true; });
-      F.paper = [624, 710];
+      // the box it prints in: a page column by default, or the figure's own (a small card figure says so)
+      F.paper = (fig.getAttribute('data-paper') || '624 710').split(' ').map(Number);
     }
     fig.classList.add('lg-ready');
     var head = h('div', 'lg-head', fig);
