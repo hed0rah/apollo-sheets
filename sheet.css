@@ -56,6 +56,10 @@ figure.third .art { max-width: 36%; }
 figure.gray img { filter: grayscale(1) invert(1) contrast(1.1); }   /* dark screens print as ink on paper */
 figure.wide .art { width: 100%; }
 figure.wide .art svg { width: 100%; }
+figure.small { float: right; width: 42%; margin: 0.02in 0 0.08in 0.18in; }   /* a card figure beside its text */
+.card { break-inside: avoid; overflow: hidden; }   /* a card keeps its heading, figure and text on one page */
+figure.small .art { width: 100%; }
+h2, h3, h4 { clear: both; }
 .dwg { position: absolute; right: 0; bottom: -0.15in; font: 6.5pt "Letter"; letter-spacing: 0.04em; }
 figcaption { font: 9pt "Roman"; margin-top: 0.09in; }
 

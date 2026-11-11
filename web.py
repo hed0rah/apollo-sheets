@@ -431,6 +431,7 @@ class Page(sheet.Sheet):
         if level == 3:
             self.ids[a] = f"&sect;{h['num']}"
             return f'<h3 id="{a}" data-n="{h["num"]}">{inline(text.rstrip("."))}{pill(h["status"])}</h3>'
+        self.ids[a] = f"&sect;{h['num']}" if h.get("num") else inline(text.rstrip("."))   # an h4 can be linked too
         return f'<h{level} id="{a}">{inline(text.rstrip("."))}{pill(h["status"])}</h{level}>'
 
     def figure(self, body, caption, width=""):
@@ -498,7 +499,7 @@ class Page(sheet.Sheet):
 
     def loop(self, arg, body):
         """an agent loop: the graph laid out, its run replayed, state beside it (loopgraph.js)"""
-        cap, g = sheet.loop_source(arg, body, self.base)
+        cap, g, _ = sheet.loop_source(arg, body, self.base)   # the page always draws a loop full size
         self.loops += 1
         self.figs += 1
         n = f"{self.chapnum}.{self.figs}"
