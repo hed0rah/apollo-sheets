@@ -101,6 +101,8 @@ HERE = Path(__file__).resolve().parent
 FONTS = os.environ.get("SHEET_FONTS", "/usr/share/fonts/opentype/urw-base35")
 CHROME = os.environ.get("SHEET_CHROME", "google-chrome")
 LOOPGRAPH = Path(os.environ.get("LOOPGRAPH", HERE / "loopgraph"))   # the component; canonical in house-styles spec/loopgraph
+PREGEL = Path(os.environ.get("PREGEL", HERE / "pregel"))   # LangGraph runtime views: superstep, fanout, reducer, checkpoints, interrupt
+NEURO = Path(os.environ.get("NEURO", HERE / "neuro"))      # memory mechanisms: engram, attractor, retention, rhythm
 
 
 # -- math and inline ---------------------------------------------------------------------------------------------------
@@ -254,6 +256,182 @@ def loop_assets(ink=False):
     css = (LOOPGRAPH / "loopgraph.css").read_text()
     js = (LOOPGRAPH / "loopgraph.js").read_text()
     return f"<style>{css}</style>{LOOP_INK if ink else ''}<script>{js}</script>"
+
+
+# ---- LangGraph's runtime, drawn from data (pregel/pregel.js) -------------------------------------------------------
+# :::superstep | :::fanout | :::reducer read a pregel trace, :::checkpoints a thread's history, :::interrupt a run
+# script; all take `Caption | src=file.json` or the JSON as the body. :::reducer also takes `| step=N | channel=name`.
+# pregel/capture.py records traces and histories from a real run; the formats are in the README.
+PREGEL_KINDS = ("superstep", "fanout", "reducer", "checkpoints", "interrupt")
+PREGEL_INK = """<style>.pg{--ink-2:#2b2b2b;--ink-3:#5a5a5a;--rule:#c9c9c9;--rule-2:#8f8f8f;--slate-soft:#f1f1f1;
+--sans:"Letter",sans-serif;--mono:"Type",monospace;margin:0;border-color:#8f8f8f;border-radius:0;font-size:8pt}
+.pg .pg-ctl{display:none!important}.pg .pg-scroll{background:none}.pg{break-inside:avoid}
+.pg td,.pg th,.pg p,.pg li,.pg dd{text-align:left}.pg .lg-svg{max-height:2.6in;width:auto!important;height:auto!important}</style>"""
+EVENTS = ("step", "line", "interrupt", "resume", "write", "discard", "checkpoint", "return", "note")
+
+
+def pregel_source(kind, arg, body, base):
+    """the caption, the checked JSON and the options (step=, channel=) of a pregel block"""
+    parts = [p.strip() for p in arg.split("|")]
+    cap, opts = parts[0], dict(o.split("=", 1) for o in parts[1:] if "=" in o)
+    if "src" in opts:
+        src = base / opts["src"]
+        if not src.exists():
+            raise SystemExit(f"sheet: :::{kind} {cap}: no file {src}")
+        text = src.read_text()
+    else:
+        text = "\n".join(body)
+    try:
+        d = json.loads(text)
+    except ValueError as e:
+        raise SystemExit(f"sheet: :::{kind} {cap}: not JSON: {e}")
+    errs = check_pregel(kind, d, opts)
+    if errs:
+        raise SystemExit(f"sheet: :::{kind} {cap}:\n  " + "\n  ".join(errs))
+    return cap or d.get("title", ""), json.dumps(d, ensure_ascii=False).replace("</", "<\\/"), opts
+
+
+def check_pregel(kind, d, opts):
+    """what pregel.js relies on, caught at build time"""
+    errs = []
+    if kind in ("superstep", "fanout", "reducer"):
+        steps = d.get("steps")
+        if not isinstance(steps, list) or not steps:
+            return ["a trace needs a non-empty steps list"]
+        for i, s in enumerate(steps):
+            if "step" not in s:
+                errs.append(f"steps[{i}] has no step number")
+            for j, t in enumerate(s.get("tasks", [])):
+                if not t.get("name"):
+                    errs.append(f"steps[{i}].tasks[{j}] has no name")
+                if t.get("kind") not in ("pull", "push"):
+                    errs.append(f"steps[{i}].tasks[{j}] kind is {t.get('kind')!r}, not pull or push")
+                errs += [f"steps[{i}].tasks[{j}] write {w!r} is not [channel, value]" for w in t.get("writes", [])
+                         if not (isinstance(w, list) and len(w) == 2 and isinstance(w[0], str))]
+        if d.get("graph"):
+            errs += [f"graph: {e}" for e in check_loop(d["graph"])]
+        if kind == "reducer":
+            want = [s for s in steps if str(s.get("step")) == opts.get("step")]
+            if not want:
+                errs.append(f"no step {opts.get('step')!r} in the trace (give | step=N)")
+            elif not any(w[0] == opts.get("channel") for t in want[0].get("tasks", []) for w in t.get("writes", [])):
+                errs.append(f"step {opts.get('step')} has no write to channel {opts.get('channel')!r} (give | channel=name)")
+    elif kind == "checkpoints":
+        cps = d.get("checkpoints") or []
+        ids = [c.get("id") for c in cps]
+        if not cps:
+            errs.append("a history needs a non-empty checkpoints list")
+        if len(set(ids)) != len(ids):
+            errs.append("duplicate checkpoint ids")
+        errs += [f"checkpoint {c.get('id')}: no parent {c['parent']}" for c in cps if c.get("parent") and c["parent"] not in ids]
+        errs += [f"checkpoint {c.get('id')} has no step" for c in cps if not isinstance(c.get("step"), int)]
+        if d.get("head") and d["head"] not in ids:
+            errs.append(f"head {d['head']} is not a checkpoint")
+    elif kind == "interrupt":
+        runs, n = d.get("runs") or [], len(d.get("code") or [])
+        if not runs:
+            errs.append("an interrupt script needs runs")
+        for i, r in enumerate(runs):
+            for j, e in enumerate(r.get("events") or []):
+                if e.get("kind") not in EVENTS:
+                    errs.append(f"runs[{i}].events[{j}] kind {e.get('kind')!r} is not one of {', '.join(EVENTS)}")
+                if "line" in e and not (isinstance(e["line"], int) and 1 <= e["line"] <= n):
+                    errs.append(f"runs[{i}].events[{j}] line {e['line']} is not in the code (1..{n})")
+    return errs
+
+
+def pregel_assets(ink=False):
+    """the pregel component, inlined once per page that has a pregel block"""
+    css = (PREGEL / "pregel.css").read_text()
+    js = (PREGEL / "pregel.js").read_text()
+    return f"<style>{css}</style>{PREGEL_INK if ink else ''}<script>{js}</script>"
+
+
+# ---- memory mechanisms, drawn from small specs (neuro/neuro.js) ------------------------------------------------------
+# :::engram (allocation by excitability, linking in time), :::attractor (a Hopfield net completing a cue),
+# :::retention (recall under reviews), :::rhythm (a cycle of modes). Each takes `Caption | src=file.json` or the JSON
+# as the body. The models are illustrative and say so on the figure; the formats are in the README.
+NEURO_KINDS = ("engram", "attractor", "retention", "rhythm")
+NEURO_INK = """<style>.nr{--ink-2:#2b2b2b;--ink-3:#5a5a5a;--rule:#c9c9c9;--rule-2:#8f8f8f;--slate-soft:#f1f1f1;
+--sans:"Letter",sans-serif;--mono:"Type",monospace;margin:0;border-color:#8f8f8f;border-radius:0;font-size:8pt}
+.nr .nr-ctl{display:none!important}.nr{break-inside:avoid}.nr td,.nr th,.nr p{text-align:left}</style>"""
+
+
+def neuro_source(kind, arg, body, base):
+    """the caption and the checked JSON of a neuro block"""
+    parts = [p.strip() for p in arg.split("|")]
+    cap, opts = parts[0], dict(o.split("=", 1) for o in parts[1:] if "=" in o)
+    if "src" in opts:
+        src = base / opts["src"]
+        if not src.exists():
+            raise SystemExit(f"sheet: :::{kind} {cap}: no file {src}")
+        text = src.read_text()
+    else:
+        text = "\n".join(body)
+    try:
+        d = json.loads(text)
+    except ValueError as e:
+        raise SystemExit(f"sheet: :::{kind} {cap}: not JSON: {e}")
+    errs = check_neuro(kind, d)
+    if errs:
+        raise SystemExit(f"sheet: :::{kind} {cap}:\n  " + "\n  ".join(errs))
+    return cap or d.get("title", ""), json.dumps(d, ensure_ascii=False).replace("</", "<\\/")
+
+
+def check_neuro(kind, d):
+    """what neuro.js relies on, caught at build time"""
+    errs = []
+    if kind == "engram":
+        ev = d.get("events") or []
+        if len(ev) < 2:
+            errs.append("an engram needs at least two events, each {name, t}")
+        errs += [f"events[{i}] needs a name and a numeric t" for i, e in enumerate(ev)
+                 if not e.get("name") or not isinstance(e.get("t"), (int, float))]
+        if d.get("drag") and d["drag"] not in [e.get("name") for e in ev]:
+            errs.append(f"drag names {d['drag']!r}, which is not an event")
+        n, k = d.get("cells", 120), d.get("k", 0)
+        if k and not 0 < k < n:
+            errs.append(f"k ({k}) must be between 0 and cells ({n})")
+    elif kind == "attractor":
+        w, h = d.get("w"), d.get("h")
+        if not (isinstance(w, int) and isinstance(h, int) and 2 <= w * h <= 400):
+            errs.append("w and h must be integers, with w*h at most 400")
+        pats = d.get("patterns") or []
+        if not pats:
+            errs.append("an attractor needs patterns, each {name, rows}")
+        for p in pats:
+            rows = p.get("rows") or []
+            if len(rows) != h or any(len(r) != w for r in rows):
+                errs.append(f"pattern {p.get('name')!r} is not {h} rows of {w} characters")
+        cue = d.get("cue") or {}
+        if cue.get("pattern") and cue["pattern"] not in [p.get("name") for p in pats]:
+            errs.append(f"cue names {cue['pattern']!r}, which is not a pattern")
+        if cue.get("mask") not in (None, "none", "top", "bottom", "left", "right"):
+            errs.append(f"cue mask {cue['mask']!r} is not top, bottom, left, right or none")
+    elif kind == "retention":
+        items = d.get("items") or []
+        if not items:
+            errs.append("retention needs items, each {name, reviews: [days]}")
+        errs += [f"items[{i}] needs a name and a non-empty list of review days" for i, it in enumerate(items)
+                 if not it.get("name") or not it.get("reviews") or not all(isinstance(x, (int, float)) for x in it["reviews"])]
+        if d.get("editable") and d["editable"] not in [it.get("name") for it in items]:
+            errs.append(f"editable names {d['editable']!r}, which is not an item")
+    elif kind == "rhythm":
+        ph = d.get("phases") or []
+        if not ph:
+            errs.append("a rhythm needs phases, each {from, to, label} in degrees")
+        errs += [f"phases[{i}] needs from and to in 0..360 and a label" for i, p in enumerate(ph)
+                 if not p.get("label") or not all(isinstance(p.get(k), (int, float)) and 0 <= p[k] <= 360 for k in ("from", "to"))]
+        errs += [f"streams[{i}] needs a name and a peak in degrees" for i, st in enumerate(d.get("streams") or [])
+                 if not st.get("name") or not isinstance(st.get("peak"), (int, float))]
+    return errs
+
+
+def neuro_assets(ink=False):
+    """the neuro component, inlined once per page that has a neuro block"""
+    css = (NEURO / "neuro.css").read_text()
+    js = (NEURO / "neuro.js").read_text()
+    return f"<style>{css}</style>{NEURO_INK if ink else ''}<script>{js}</script>"
 BODY_BLOCKS = ("caution", "warning", "note", "changed", "row")      # blocks whose body is more Markdown
 
 
@@ -393,6 +571,8 @@ class Sheet:
         self.thesis = {}                          # part index -> its :::part thesis
         self.cur_part = None
         self.loops = 0                            # :::loop blocks; the page carries the component when there is one
+        self.pregels = 0                          # :::superstep and its kin; likewise
+        self.neuros = 0                           # :::engram and its kin; likewise
 
     def prepare(self, lines):
         self.heads, self.hi = outline(lines, self.m), 0
@@ -635,7 +815,7 @@ class Sheet:
 
     def _directive(self, kind, arg, body):
         text = "\n".join(body)
-        if not text.strip() and kind not in ("changed", "row", "part") and not (kind == "loop" and "src=" in arg):
+        if not text.strip() and kind not in ("changed", "row", "part") and not (kind in ("loop",) + PREGEL_KINDS + NEURO_KINDS and "src=" in arg):
             raise SystemExit(f"sheet: :::{kind} {arg} is empty")
         if kind == "table":
             rows = [l for l in body if l.strip().startswith("|")]
@@ -698,6 +878,18 @@ class Sheet:
                                    f'<script type="application/json">{g}</script></div>', cap, "small")
             # on paper every subgraph is drawn collapsed: the loop's shape at a size that reads; the page has the detail
             return self.figure(f'<div class="lg" data-loopgraph data-collapse><script type="application/json">{g}</script></div>', cap, "wide")
+        if kind in PREGEL_KINDS:
+            cap, d, opts = pregel_source(kind, arg, body, self.base)
+            self.pregels += 1
+            if kind == "superstep" and '"graph"' in d:
+                self.loops += 1                   # its graph pane is a loopgraph
+            attrs = "".join(f' data-{k}="{html.escape(v)}"' for k, v in opts.items() if k in ("step", "channel"))
+            return self.figure(f'<div data-pregel="{kind}" data-paper{attrs}><script type="application/json">{d}</script></div>',
+                               cap, "wide")
+        if kind in NEURO_KINDS:
+            cap, d = neuro_source(kind, arg, body, self.base)
+            self.neuros += 1
+            return self.figure(f'<div data-neuro="{kind}" data-paper><script type="application/json">{d}</script></div>', cap, "wide")
         raise SystemExit(f"sheet: unknown block :::{kind}")
 
 
@@ -862,7 +1054,7 @@ def render(src_path, overrides=()):
     if not theme(sheet.m)["invert"]:                 # a figure's white fills take the paper, so boxes sit on it
         content = content.replace("fill: #ffffff", "fill: var(--paper)").replace('fill="#ffffff"', 'fill="var(--paper)"')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>{title}</title><style>{css(sheet.m)}</style></head><body>'
-            f'<div class="edgetab">{tab}</div>{head}<main>{content}</main>{loop_assets(True) if sheet.loops else ""}</body></html>')
+            f'<div class="edgetab">{tab}</div>{head}<main>{content}</main>{loop_assets(True) if sheet.loops else ""}{pregel_assets(True) if sheet.pregels else ""}{neuro_assets(True) if sheet.neuros else ""}</body></html>')
 
 
 def main():

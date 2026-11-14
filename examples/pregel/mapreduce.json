@@ -1,0 +1,621 @@
+{
+ "title": "Map-reduce with a deferred summary",
+ "channels": {
+  "topic": {
+   "type": "LastValue"
+  },
+  "subjects": {
+   "type": "LastValue"
+  },
+  "results": {
+   "type": "BinaryOperatorAggregate",
+   "reducer": "add"
+  },
+  "summary": {
+   "type": "LastValue"
+  },
+  "__start__": {
+   "type": "EphemeralValue"
+  },
+  "__pregel_tasks": {
+   "type": "Topic"
+  },
+  "branch:to:plan": {
+   "type": "EphemeralValue"
+  },
+  "branch:to:work": {
+   "type": "EphemeralValue"
+  },
+  "branch:to:verify": {
+   "type": "EphemeralValue"
+  },
+  "branch:to:audit": {
+   "type": "EphemeralValue"
+  },
+  "branch:to:summarize": {
+   "type": "LastValueAfterFinish"
+  }
+ },
+ "defer": [
+  "summarize"
+ ],
+ "graph": {
+  "id": "graph",
+  "title": "Map-reduce with a deferred summary",
+  "dir": "LR",
+  "nodes": [
+   {
+    "id": "__start__",
+    "kind": "start",
+    "label": "START"
+   },
+   {
+    "id": "plan",
+    "kind": "step",
+    "label": "plan"
+   },
+   {
+    "id": "work",
+    "kind": "step",
+    "label": "work"
+   },
+   {
+    "id": "verify",
+    "kind": "step",
+    "label": "verify"
+   },
+   {
+    "id": "audit",
+    "kind": "step",
+    "label": "audit"
+   },
+   {
+    "id": "summarize",
+    "kind": "step",
+    "label": "summarize",
+    "sub": "defer"
+   },
+   {
+    "id": "__end__",
+    "kind": "end",
+    "label": "END"
+   }
+  ],
+  "edges": [
+   {
+    "from": "__start__",
+    "to": "plan"
+   },
+   {
+    "from": "audit",
+    "to": "summarize"
+   },
+   {
+    "from": "plan",
+    "to": "audit",
+    "kind": "cond",
+    "when": "route"
+   },
+   {
+    "from": "plan",
+    "to": "work",
+    "kind": "send"
+   },
+   {
+    "from": "verify",
+    "to": "summarize"
+   },
+   {
+    "from": "work",
+    "to": "summarize"
+   },
+   {
+    "from": "work",
+    "to": "verify",
+    "kind": "cond",
+    "when": "route"
+   },
+   {
+    "from": "summarize",
+    "to": "__end__"
+   }
+  ]
+ },
+ "steps": [
+  {
+   "step": -1,
+   "source": "input",
+   "checkpoint": "1f1ddeda-d767-67eb-bfff-fe63489db8db",
+   "tasks": [],
+   "updated": [
+    "__start__"
+   ],
+   "input": {
+    "topic": "tides"
+   },
+   "channel_versions": {
+    "__start__": 1
+   },
+   "available": [
+    "__start__"
+   ],
+   "versions_seen": {},
+   "values": {},
+   "next": [
+    "__start__"
+   ]
+  },
+  {
+   "step": 0,
+   "source": "loop",
+   "checkpoint": "1f1ddeda-d769-6612-8000-3b1990079afc",
+   "tasks": [
+    {
+     "id": "532e6ebf-ad61-345b-12ab-91f4e70f42c4",
+     "name": "__start__",
+     "kind": "pull",
+     "triggers": [
+      "__start__"
+     ],
+     "path": "~__pregel_pull, __start__",
+     "writes": [
+      [
+       "topic",
+       "tides"
+      ],
+      [
+       "branch:to:plan",
+       null
+      ]
+     ],
+     "status": "ok"
+    }
+   ],
+   "updated": [
+    "__start__",
+    "branch:to:plan",
+    "topic"
+   ],
+   "channel_versions": {
+    "__start__": 2,
+    "topic": 2,
+    "branch:to:plan": 2
+   },
+   "available": [
+    "branch:to:plan",
+    "topic"
+   ],
+   "versions_seen": {
+    "__start__": {
+     "__start__": 1
+    }
+   },
+   "values": {
+    "topic": "tides"
+   },
+   "next": [
+    "plan"
+   ]
+  },
+  {
+   "step": 1,
+   "source": "loop",
+   "checkpoint": "1f1ddeda-d76b-6452-8001-a411453850ac",
+   "tasks": [
+    {
+     "id": "29142f50-fe48-a141-e6d0-d23be6c02f84",
+     "name": "plan",
+     "kind": "pull",
+     "triggers": [
+      "branch:to:plan"
+     ],
+     "path": "~__pregel_pull, plan",
+     "writes": [
+      [
+       "subjects",
+       [
+        "moon",
+        "sun",
+        "sea"
+       ]
+      ],
+      [
+       "__pregel_tasks",
+       {
+        "node": "work",
+        "arg": {
+         "subject": "moon"
+        }
+       }
+      ],
+      [
+       "__pregel_tasks",
+       {
+        "node": "work",
+        "arg": {
+         "subject": "sun"
+        }
+       }
+      ],
+      [
+       "__pregel_tasks",
+       {
+        "node": "work",
+        "arg": {
+         "subject": "sea"
+        }
+       }
+      ],
+      [
+       "branch:to:audit",
+       null
+      ]
+     ],
+     "status": "ok"
+    }
+   ],
+   "updated": [
+    "__pregel_tasks",
+    "branch:to:audit",
+    "branch:to:plan",
+    "subjects"
+   ],
+   "channel_versions": {
+    "__start__": 2,
+    "topic": 2,
+    "branch:to:plan": 3,
+    "subjects": 3,
+    "__pregel_tasks": 3,
+    "branch:to:audit": 3
+   },
+   "available": [
+    "__pregel_tasks",
+    "branch:to:audit",
+    "subjects",
+    "topic"
+   ],
+   "versions_seen": {
+    "__start__": {
+     "__start__": 1
+    },
+    "plan": {
+     "branch:to:plan": 2
+    }
+   },
+   "values": {
+    "topic": "tides",
+    "subjects": [
+     "moon",
+     "sun",
+     "sea"
+    ]
+   },
+   "next": [
+    "work",
+    "work",
+    "work",
+    "audit"
+   ]
+  },
+  {
+   "step": 2,
+   "source": "loop",
+   "checkpoint": "1f1ddeda-d771-65c4-8002-c6492f0d9fff",
+   "tasks": [
+    {
+     "id": "3e5a5640-6f8d-d37d-1fdc-fcba2885dbdd",
+     "name": "audit",
+     "kind": "pull",
+     "triggers": [
+      "branch:to:audit"
+     ],
+     "path": "~__pregel_pull, audit",
+     "writes": [
+      [
+       "results",
+       [
+        "audit: 3 subjects"
+       ]
+      ],
+      [
+       "branch:to:summarize",
+       null
+      ]
+     ],
+     "status": "ok"
+    },
+    {
+     "id": "c5315b17-16df-56b6-7b8f-f8f9f87cce38",
+     "name": "work",
+     "kind": "push",
+     "triggers": [
+      "__pregel_push"
+     ],
+     "path": "~__pregel_push, 0000000000, 0000000000",
+     "writes": [
+      [
+       "results",
+       [
+        "moon: done"
+       ]
+      ],
+      [
+       "branch:to:summarize",
+       null
+      ]
+     ],
+     "status": "ok"
+    },
+    {
+     "id": "759da9f5-2486-d89e-fc8f-05da2ee39d88",
+     "name": "work",
+     "kind": "push",
+     "triggers": [
+      "__pregel_push"
+     ],
+     "path": "~__pregel_push, 0000000001, 0000000000",
+     "writes": [
+      [
+       "results",
+       [
+        "sun: draft"
+       ]
+      ],
+      [
+       "branch:to:verify",
+       null
+      ],
+      [
+       "branch:to:summarize",
+       null
+      ]
+     ],
+     "status": "ok"
+    },
+    {
+     "id": "37b630c6-6816-8dff-8731-6f04292ebdae",
+     "name": "work",
+     "kind": "push",
+     "triggers": [
+      "__pregel_push"
+     ],
+     "path": "~__pregel_push, 0000000002, 0000000000",
+     "writes": [
+      [
+       "results",
+       [
+        "sea: done"
+       ]
+      ],
+      [
+       "branch:to:summarize",
+       null
+      ]
+     ],
+     "status": "ok"
+    }
+   ],
+   "updated": [
+    "__pregel_tasks",
+    "branch:to:audit",
+    "branch:to:summarize",
+    "branch:to:verify",
+    "results"
+   ],
+   "channel_versions": {
+    "__start__": 2,
+    "topic": 2,
+    "branch:to:plan": 3,
+    "subjects": 3,
+    "__pregel_tasks": 4,
+    "branch:to:audit": 4,
+    "results": 4,
+    "branch:to:summarize": 4,
+    "branch:to:verify": 4
+   },
+   "available": [
+    "__pregel_tasks",
+    "branch:to:summarize",
+    "branch:to:verify",
+    "results",
+    "subjects",
+    "topic"
+   ],
+   "versions_seen": {
+    "__start__": {
+     "__start__": 1
+    },
+    "plan": {
+     "branch:to:plan": 2
+    },
+    "audit": {
+     "branch:to:audit": 3
+    },
+    "work": {}
+   },
+   "values": {
+    "topic": "tides",
+    "subjects": [
+     "moon",
+     "sun",
+     "sea"
+    ],
+    "results": [
+     "audit: 3 subjects",
+     "moon: done",
+     "sun: draft",
+     "sea: done"
+    ]
+   },
+   "next": [
+    "verify"
+   ]
+  },
+  {
+   "step": 3,
+   "source": "loop",
+   "checkpoint": "1f1ddeda-d772-6536-8003-f556ea52e50a",
+   "tasks": [
+    {
+     "id": "53d9804a-7112-3abd-6679-0e54ac6ff9c9",
+     "name": "verify",
+     "kind": "pull",
+     "triggers": [
+      "branch:to:verify"
+     ],
+     "path": "~__pregel_pull, verify",
+     "writes": [
+      [
+       "results",
+       [
+        "sun: verified"
+       ]
+      ],
+      [
+       "branch:to:summarize",
+       null
+      ]
+     ],
+     "status": "ok"
+    }
+   ],
+   "updated": [
+    "branch:to:summarize",
+    "branch:to:verify",
+    "results"
+   ],
+   "channel_versions": {
+    "__start__": 2,
+    "topic": 2,
+    "branch:to:plan": 3,
+    "subjects": 3,
+    "__pregel_tasks": 4,
+    "branch:to:audit": 4,
+    "results": 5,
+    "branch:to:summarize": 5,
+    "branch:to:verify": 5
+   },
+   "available": [
+    "__pregel_tasks",
+    "branch:to:summarize",
+    "results",
+    "subjects",
+    "topic"
+   ],
+   "versions_seen": {
+    "__start__": {
+     "__start__": 1
+    },
+    "plan": {
+     "branch:to:plan": 2
+    },
+    "audit": {
+     "branch:to:audit": 3
+    },
+    "work": {},
+    "verify": {
+     "branch:to:verify": 4
+    }
+   },
+   "values": {
+    "topic": "tides",
+    "subjects": [
+     "moon",
+     "sun",
+     "sea"
+    ],
+    "results": [
+     "audit: 3 subjects",
+     "moon: done",
+     "sun: draft",
+     "sea: done",
+     "sun: verified"
+    ]
+   },
+   "next": [
+    "summarize"
+   ]
+  },
+  {
+   "step": 4,
+   "source": "loop",
+   "checkpoint": "1f1ddeda-d773-6e2b-8004-ee2f93006b05",
+   "tasks": [
+    {
+     "id": "3200d42c-d129-b069-db30-2982c28ba969",
+     "name": "summarize",
+     "kind": "pull",
+     "triggers": [
+      "branch:to:summarize"
+     ],
+     "path": "~__pregel_pull, summarize",
+     "writes": [
+      [
+       "summary",
+       "5 results"
+      ]
+     ],
+     "status": "ok"
+    }
+   ],
+   "updated": [
+    "branch:to:summarize",
+    "summary"
+   ],
+   "channel_versions": {
+    "__start__": 2,
+    "topic": 2,
+    "branch:to:plan": 3,
+    "subjects": 3,
+    "__pregel_tasks": 4,
+    "branch:to:audit": 4,
+    "results": 5,
+    "branch:to:summarize": 6,
+    "branch:to:verify": 5,
+    "summary": 6
+   },
+   "available": [
+    "__pregel_tasks",
+    "results",
+    "subjects",
+    "summary",
+    "topic"
+   ],
+   "versions_seen": {
+    "__start__": {
+     "__start__": 1
+    },
+    "plan": {
+     "branch:to:plan": 2
+    },
+    "audit": {
+     "branch:to:audit": 3
+    },
+    "work": {},
+    "verify": {
+     "branch:to:verify": 4
+    },
+    "summarize": {
+     "branch:to:summarize": 5
+    }
+   },
+   "values": {
+    "topic": "tides",
+    "subjects": [
+     "moon",
+     "sun",
+     "sea"
+    ],
+    "results": [
+     "audit: 3 subjects",
+     "moon: done",
+     "sun: draft",
+     "sea: done",
+     "sun: verified"
+    ],
+    "summary": "5 results"
+   },
+   "next": []
+  }
+ ]
+}

@@ -764,6 +764,27 @@
     panel(F, cur, at);
     chart(F, at);
   }
+  // lit from outside (another component driving this graph): cur runs now, on ran before, next runs after;
+  // an edge lights when it joins a node that ran to one running now
+  function light(F, o) {
+    function set(a) { var s = {}; (a || []).forEach(function (id) { var v = vis(F, id); if (v) s[v] = 1; }); return s; }
+    var cur = set(o.cur), on = set((o.on || []).concat(o.cur || [])), nxt = set(o.next);
+    F.fig.classList.toggle('lg-running', Object.keys(on).length > 0);
+    Object.keys(F.nodeEls).forEach(function (k) {
+      var r = F.nodeEls[k];
+      r.g.classList.toggle('is-on', !!on[k]);
+      r.g.classList.toggle('is-cur', !!cur[k]);
+      r.g.classList.toggle('is-next', !!nxt[k] && !cur[k]);
+    });
+    var prev = set(o.prev);
+    F.edgeEls.forEach(function (r) {
+      var u = vis(F, r.e.from), v = vis(F, r.e.to);
+      var hot = !!cur[v] && !!prev[u];
+      r.g.classList.toggle('is-on', hot || (!!on[u] && !!on[v]));
+      r.g.classList.toggle('is-cur', hot);
+      r.path.setAttribute('marker-end', 'url(#' + F.id + '-mk-' + (hot ? 'hot' : r.kind) + ')');
+    });
+  }
   function token(F, s) {
     if (reduce) return;
     var r = F.edgeEls.filter(function (x) { return x.e.i === s.edge.i; })[0];
@@ -1031,6 +1052,7 @@
     draw(F);
     show(F, 0, true);
     if (window.ResizeObserver) new ResizeObserver(function () { fit(F); }).observe(F.canvas);
+    F.light = function (o) { light(F, o || {}); };
     fig.loopgraph = F;
     fig.dispatchEvent(new CustomEvent('loopgraph:ready', { bubbles: true, detail: F }));
   }

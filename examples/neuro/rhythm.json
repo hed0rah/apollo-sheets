@@ -1,0 +1,36 @@
+{
+ "title": "One theta cycle, two modes",
+ "period": "theta, ~125 ms",
+ "start": 40,
+ "phases": [
+  {
+   "from": 0,
+   "to": 180,
+   "label": "encode",
+   "color": "push",
+   "note": "entorhinal input (the world) dominates CA1; LTP is strong; CA3's stored patterns are damped"
+  },
+  {
+   "from": 180,
+   "to": 360,
+   "label": "retrieve",
+   "color": "pull",
+   "note": "CA3 input (the stored pattern) dominates; plasticity is weak, so recall does not overwrite itself"
+  }
+ ],
+ "streams": [
+  {
+   "name": "entorhinal input",
+   "peak": 90
+  },
+  {
+   "name": "CA3 input",
+   "peak": 270
+  },
+  {
+   "name": "LTP",
+   "peak": 90
+  }
+ ],
+ "note": "After Hasselmo, Bodelon and Wyble (2002). The phases are the model's; the closed-loop test of them is Siegle and Wilson (2014)."
+}
