@@ -102,6 +102,7 @@ FONTS = os.environ.get("SHEET_FONTS", "/usr/share/fonts/opentype/urw-base35")
 CHROME = os.environ.get("SHEET_CHROME", "google-chrome")
 LOOPGRAPH = Path(os.environ.get("LOOPGRAPH", HERE / "loopgraph"))   # the component; canonical in house-styles spec/loopgraph
 PREGEL = Path(os.environ.get("PREGEL", HERE / "pregel"))   # LangGraph runtime views: superstep, fanout, reducer, checkpoints, interrupt
+NEURO = Path(os.environ.get("NEURO", HERE / "neuro"))      # memory mechanisms: engram, attractor, retention, rhythm
 
 
 # -- math and inline ---------------------------------------------------------------------------------------------------
@@ -344,6 +345,93 @@ def pregel_assets(ink=False):
     css = (PREGEL / "pregel.css").read_text()
     js = (PREGEL / "pregel.js").read_text()
     return f"<style>{css}</style>{PREGEL_INK if ink else ''}<script>{js}</script>"
+
+
+# ---- memory mechanisms, drawn from small specs (neuro/neuro.js) ------------------------------------------------------
+# :::engram (allocation by excitability, linking in time), :::attractor (a Hopfield net completing a cue),
+# :::retention (recall under reviews), :::rhythm (a cycle of modes). Each takes `Caption | src=file.json` or the JSON
+# as the body. The models are illustrative and say so on the figure; the formats are in the README.
+NEURO_KINDS = ("engram", "attractor", "retention", "rhythm")
+NEURO_INK = """<style>.nr{--ink-2:#2b2b2b;--ink-3:#5a5a5a;--rule:#c9c9c9;--rule-2:#8f8f8f;--slate-soft:#f1f1f1;
+--sans:"Letter",sans-serif;--mono:"Type",monospace;margin:0;border-color:#8f8f8f;border-radius:0;font-size:8pt}
+.nr .nr-ctl{display:none!important}.nr{break-inside:avoid}.nr td,.nr th,.nr p{text-align:left}</style>"""
+
+
+def neuro_source(kind, arg, body, base):
+    """the caption and the checked JSON of a neuro block"""
+    parts = [p.strip() for p in arg.split("|")]
+    cap, opts = parts[0], dict(o.split("=", 1) for o in parts[1:] if "=" in o)
+    if "src" in opts:
+        src = base / opts["src"]
+        if not src.exists():
+            raise SystemExit(f"sheet: :::{kind} {cap}: no file {src}")
+        text = src.read_text()
+    else:
+        text = "\n".join(body)
+    try:
+        d = json.loads(text)
+    except ValueError as e:
+        raise SystemExit(f"sheet: :::{kind} {cap}: not JSON: {e}")
+    errs = check_neuro(kind, d)
+    if errs:
+        raise SystemExit(f"sheet: :::{kind} {cap}:\n  " + "\n  ".join(errs))
+    return cap or d.get("title", ""), json.dumps(d, ensure_ascii=False).replace("</", "<\\/")
+
+
+def check_neuro(kind, d):
+    """what neuro.js relies on, caught at build time"""
+    errs = []
+    if kind == "engram":
+        ev = d.get("events") or []
+        if len(ev) < 2:
+            errs.append("an engram needs at least two events, each {name, t}")
+        errs += [f"events[{i}] needs a name and a numeric t" for i, e in enumerate(ev)
+                 if not e.get("name") or not isinstance(e.get("t"), (int, float))]
+        if d.get("drag") and d["drag"] not in [e.get("name") for e in ev]:
+            errs.append(f"drag names {d['drag']!r}, which is not an event")
+        n, k = d.get("cells", 120), d.get("k", 0)
+        if k and not 0 < k < n:
+            errs.append(f"k ({k}) must be between 0 and cells ({n})")
+    elif kind == "attractor":
+        w, h = d.get("w"), d.get("h")
+        if not (isinstance(w, int) and isinstance(h, int) and 2 <= w * h <= 400):
+            errs.append("w and h must be integers, with w*h at most 400")
+        pats = d.get("patterns") or []
+        if not pats:
+            errs.append("an attractor needs patterns, each {name, rows}")
+        for p in pats:
+            rows = p.get("rows") or []
+            if len(rows) != h or any(len(r) != w for r in rows):
+                errs.append(f"pattern {p.get('name')!r} is not {h} rows of {w} characters")
+        cue = d.get("cue") or {}
+        if cue.get("pattern") and cue["pattern"] not in [p.get("name") for p in pats]:
+            errs.append(f"cue names {cue['pattern']!r}, which is not a pattern")
+        if cue.get("mask") not in (None, "none", "top", "bottom", "left", "right"):
+            errs.append(f"cue mask {cue['mask']!r} is not top, bottom, left, right or none")
+    elif kind == "retention":
+        items = d.get("items") or []
+        if not items:
+            errs.append("retention needs items, each {name, reviews: [days]}")
+        errs += [f"items[{i}] needs a name and a non-empty list of review days" for i, it in enumerate(items)
+                 if not it.get("name") or not it.get("reviews") or not all(isinstance(x, (int, float)) for x in it["reviews"])]
+        if d.get("editable") and d["editable"] not in [it.get("name") for it in items]:
+            errs.append(f"editable names {d['editable']!r}, which is not an item")
+    elif kind == "rhythm":
+        ph = d.get("phases") or []
+        if not ph:
+            errs.append("a rhythm needs phases, each {from, to, label} in degrees")
+        errs += [f"phases[{i}] needs from and to in 0..360 and a label" for i, p in enumerate(ph)
+                 if not p.get("label") or not all(isinstance(p.get(k), (int, float)) and 0 <= p[k] <= 360 for k in ("from", "to"))]
+        errs += [f"streams[{i}] needs a name and a peak in degrees" for i, st in enumerate(d.get("streams") or [])
+                 if not st.get("name") or not isinstance(st.get("peak"), (int, float))]
+    return errs
+
+
+def neuro_assets(ink=False):
+    """the neuro component, inlined once per page that has a neuro block"""
+    css = (NEURO / "neuro.css").read_text()
+    js = (NEURO / "neuro.js").read_text()
+    return f"<style>{css}</style>{NEURO_INK if ink else ''}<script>{js}</script>"
 BODY_BLOCKS = ("caution", "warning", "note", "changed", "row")      # blocks whose body is more Markdown
 
 
@@ -484,6 +572,7 @@ class Sheet:
         self.cur_part = None
         self.loops = 0                            # :::loop blocks; the page carries the component when there is one
         self.pregels = 0                          # :::superstep and its kin; likewise
+        self.neuros = 0                           # :::engram and its kin; likewise
 
     def prepare(self, lines):
         self.heads, self.hi = outline(lines, self.m), 0
@@ -726,7 +815,7 @@ class Sheet:
 
     def _directive(self, kind, arg, body):
         text = "\n".join(body)
-        if not text.strip() and kind not in ("changed", "row", "part") and not (kind in ("loop",) + PREGEL_KINDS and "src=" in arg):
+        if not text.strip() and kind not in ("changed", "row", "part") and not (kind in ("loop",) + PREGEL_KINDS + NEURO_KINDS and "src=" in arg):
             raise SystemExit(f"sheet: :::{kind} {arg} is empty")
         if kind == "table":
             rows = [l for l in body if l.strip().startswith("|")]
@@ -797,6 +886,10 @@ class Sheet:
             attrs = "".join(f' data-{k}="{html.escape(v)}"' for k, v in opts.items() if k in ("step", "channel"))
             return self.figure(f'<div data-pregel="{kind}" data-paper{attrs}><script type="application/json">{d}</script></div>',
                                cap, "wide")
+        if kind in NEURO_KINDS:
+            cap, d = neuro_source(kind, arg, body, self.base)
+            self.neuros += 1
+            return self.figure(f'<div data-neuro="{kind}" data-paper><script type="application/json">{d}</script></div>', cap, "wide")
         raise SystemExit(f"sheet: unknown block :::{kind}")
 
 
@@ -961,7 +1054,7 @@ def render(src_path, overrides=()):
     if not theme(sheet.m)["invert"]:                 # a figure's white fills take the paper, so boxes sit on it
         content = content.replace("fill: #ffffff", "fill: var(--paper)").replace('fill="#ffffff"', 'fill="var(--paper)"')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>{title}</title><style>{css(sheet.m)}</style></head><body>'
-            f'<div class="edgetab">{tab}</div>{head}<main>{content}</main>{loop_assets(True) if sheet.loops else ""}{pregel_assets(True) if sheet.pregels else ""}</body></html>')
+            f'<div class="edgetab">{tab}</div>{head}<main>{content}</main>{loop_assets(True) if sheet.loops else ""}{pregel_assets(True) if sheet.pregels else ""}{neuro_assets(True) if sheet.neuros else ""}</body></html>')
 
 
 def main():

@@ -1,0 +1,36 @@
+{
+ "title": "Four reviews, massed or spaced",
+ "horizon": 60,
+ "target": 0.9,
+ "editable": "yours",
+ "items": [
+  {
+   "name": "massed",
+   "reviews": [
+    0,
+    0.05,
+    0.1,
+    0.15,
+    0.2
+   ]
+  },
+  {
+   "name": "spaced",
+   "reviews": [
+    0,
+    1,
+    4,
+    10,
+    24
+   ]
+  },
+  {
+   "name": "yours",
+   "reviews": [
+    0,
+    2
+   ]
+  }
+ ],
+ "note": "The same five sessions crammed into one sitting or spread over three weeks. Massed reviews come when recall is still near 100 %, so each adds almost nothing; spaced ones come after some forgetting and multiply stability. Add reviews to 'yours' and try to stay above the target line with as few as you can."
+}

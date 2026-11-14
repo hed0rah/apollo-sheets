@@ -1,0 +1,27 @@
+{
+ "title": "Three events: five hours apart, then a day and a half later",
+ "cells": 120,
+ "k": 18,
+ "tau": 6,
+ "boost": 1,
+ "noise": 1.0,
+ "seed": 7,
+ "unit": "h",
+ "horizon": 60,
+ "drag": "B",
+ "events": [
+  {
+   "name": "A",
+   "t": 0
+  },
+  {
+   "name": "B",
+   "t": 5
+  },
+  {
+   "name": "C",
+   "t": 40
+  }
+ ],
+ "note": "A joins the 18 most excitable cells and leaves them more excitable for hours. B, five hours later, finds them still ahead and lands in many of the same cells: the two memories are linked. C, a day and a half later, is allocated by baseline excitability alone. Drag B to see the overlap fall as the gap grows."
+}

@@ -524,6 +524,18 @@ class Page(sheet.Sheet):
         return (f'<figure data-pregel="{kind}"{attrs} id="{a}"><script type="application/json">{d}</script>'
                 f'<figcaption class="cap" data-n="{n}">{inline(cap) if cap else ""}</figcaption></figure>')
 
+    def neuro(self, kind, arg, body):
+        """a memory mechanism from a small spec (neuro.js)"""
+        cap, d = sheet.neuro_source(kind, arg, body, self.base)
+        self.neuros += 1
+        self.figs += 1
+        n = f"{self.chapnum}.{self.figs}"
+        a, label = f"fig-{n}", f"Fig. {n}"
+        self.ids[a] = label
+        self.items.append((a, label, cap))
+        return (f'<figure data-neuro="{kind}" id="{a}"><script type="application/json">{d}</script>'
+                f'<figcaption class="cap" data-n="{n}">{inline(cap) if cap else ""}</figcaption></figure>')
+
     def blocks(self, lines):
         # code blocks become the template's code panel; everything else is sheet's
         out = super().blocks(lines)
@@ -550,6 +562,8 @@ class Page(sheet.Sheet):
             return self.loop(arg, body)
         if kind in sheet.PREGEL_KINDS:
             return self.pregel(kind, arg, body)
+        if kind in sheet.NEURO_KINDS:
+            return self.neuro(kind, arg, body)
         if kind == "glossary":
             terms = self.glossary_terms(body)
             items = []
@@ -755,7 +769,7 @@ def render(src_path, overrides=()):
   </main>
 </div>
 {spy}
-{THEME_JS}{PAGE_JS}{sheet.loop_assets() if page.loops else ""}{sheet.pregel_assets() if page.pregels else ""}</body>
+{THEME_JS}{PAGE_JS}{sheet.loop_assets() if page.loops else ""}{sheet.pregel_assets() if page.pregels else ""}{sheet.neuro_assets() if page.neuros else ""}</body>
 </html>
 """
     for bad in ("\u2014", "\u2013"):
